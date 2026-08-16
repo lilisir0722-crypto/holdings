@@ -1,0 +1,294 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>持仓</title>
+  <style>
+    :root {
+      --paper: #f3ead8;
+      --ink: #1b1712;
+      --muted: #6b6256;
+      --rule: #c9bba3;
+      --up: #b42318;
+      --down: #1f6b45;
+      --stamp: #9b1c1c;
+      --card: #faf6ee;
+    }
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      background: var(--paper);
+      color: var(--ink);
+      font-family: "Songti SC", "Noto Serif SC", "Source Han Serif SC", Palatino, serif;
+      line-height: 1.55;
+    }
+    .wrap { max-width: 860px; margin: 0 auto; padding: 40px 24px 80px; }
+    header.mast {
+      border-top: 4px solid var(--ink);
+      border-bottom: 1px solid var(--ink);
+      padding: 12px 0 16px;
+      margin-bottom: 28px;
+    }
+    header.mast h1 {
+      font-size: 42px;
+      letter-spacing: 0.35em;
+      margin: 0 0 6px;
+      font-weight: 700;
+    }
+    header.mast p { margin: 0; color: var(--muted); font-size: 14px; letter-spacing: 0.08em; }
+    .lede {
+      border-left: 3px solid var(--ink);
+      padding: 8px 0 8px 16px;
+      margin: 0 0 32px;
+    }
+    .lede.market { border-left-color: var(--stamp); }
+    .lede.structure { border-left-color: #6b4f2a; }
+    .lede.look { border-left-color: #2a4a6b; margin-top: 20px; }
+    .pos-name { text-decoration: underline; text-decoration-thickness: 1px; text-underline-offset: 4px; }
+    .pos-name:hover { color: var(--stamp); }
+    .evidence { margin: 0; padding-left: 1.2em; color: var(--muted); font-size: 14px; font-family: "Iowan Old Style", Palatino, serif; }
+    .pos {
+      background: var(--card);
+      border: 1px solid var(--rule);
+      padding: 18px 20px;
+      margin-bottom: 14px;
+    }
+    .pos-head { display: flex; justify-content: space-between; align-items: baseline; gap: 12px; }
+    .pos-head h3 { margin: 0; font-size: 20px; }
+    .code { color: var(--muted); font-family: "IBM Plex Mono", "Menlo", monospace; font-size: 13px; letter-spacing: 0.04em; }
+    .nums { display: flex; gap: 18px; flex-wrap: wrap; margin: 10px 0 12px; font-family: "IBM Plex Mono", "Menlo", monospace; font-size: 13px; }
+    .up { color: var(--up); }
+    .down { color: var(--down); }
+    .judge.kind-现状 { border-top: 0; padding-top: 0; }
+    .judge.kind-现状 strong { font-size: 18px; }
+    .judge strong { display: block; margin-bottom: 4px; }
+    .level-alert strong { color: var(--stamp); }
+    form.inline { display: inline; }
+    button, .btn {
+      font-family: inherit;
+      background: var(--ink);
+      color: var(--paper);
+      border: 0;
+      padding: 8px 14px;
+      cursor: pointer;
+      font-size: 14px;
+    }
+    button.ghost {
+      background: transparent;
+      color: var(--muted);
+      border: 1px solid var(--rule);
+    }
+    .toolbar { display: flex; gap: 10px; align-items: center; margin-bottom: 24px; }
+    .err { color: var(--stamp); margin-bottom: 16px; }
+    .register {
+      margin-top: 40px;
+      border-top: 2px solid var(--ink);
+      padding-top: 20px;
+    }
+    .register.cash { margin-top: 0; margin-bottom: 28px; border-top: 0; padding-top: 0; }
+    .register h2 { margin: 0 0 12px; font-size: 18px; letter-spacing: 0.2em; }
+    .row { display: flex; flex-wrap: wrap; gap: 10px; align-items: end; }
+    label { display: flex; flex-direction: column; font-size: 12px; color: var(--muted); letter-spacing: 0.06em; }
+    input, select {
+      font-family: "IBM Plex Mono", Menlo, monospace;
+      font-size: 14px;
+      padding: 8px;
+      border: 1px solid var(--rule);
+      background: var(--card);
+      color: var(--ink);
+      min-width: 110px;
+    }
+    .empty { color: var(--muted); padding: 24px 0; }
+    .meta { font-size: 12px; color: var(--muted); }
+  </style>
+</head>
+<body>
+  <div class="wrap">
+    <header class="mast">
+      <h1>持仓</h1>
+      <p>手里这些怎样 · 相对沪深300怎样 · 正要看的一只 · 只算已经填进来的</p>
+    </header>
+
+    {% if error %}<p class="err">{{ error }}</p>{% endif %}
+
+    <div class="toolbar">
+      <form method="post" action="/refresh">
+        <button type="submit">刷新行情</button>
+      </form>
+      {% if fetched_at %}<span class="meta">上次刷新 {{ fetched_at }}</span>{% endif %}
+    </div>
+
+    <section class="register cash">
+      <h2>可用现金</h2>
+      <form method="post" action="/cash">
+        <div class="row">
+          <label>佣金宝
+            <input name="yongjinbao" type="number" step="any" min="0"
+              value="{{ '%.2f'|format(cash.yongjinbao) if cash and cash.known else '' }}"
+              placeholder="0" />
+          </label>
+          <label>支付宝
+            <input name="alipay" type="number" step="any" min="0"
+              value="{{ '%.2f'|format(cash.alipay) if cash and cash.known else '' }}"
+              placeholder="0" />
+          </label>
+          <button type="submit">保存现金</button>
+        </div>
+      </form>
+      <p class="meta">手填现在还能用的钱，不是券商实时余额。总判断和技术页会拿它当依据。</p>
+      {% if cash and cash.known %}
+        <p class="meta">已记：合计 {{ "%.2f"|format(cash.total) }} 元</p>
+      {% else %}
+        <p class="meta">还没填过。</p>
+      {% endif %}
+    </section>
+
+    {% if report and (report.positions or report.market_judgment or report.structure_judgment) %}
+      {% if report.market_judgment %}
+      <section class="lede market">
+        <h2>{{ report.market_judgment.title }}</h2>
+        <ul class="evidence">
+          {% for e in report.market_judgment.evidence %}
+            <li>{{ e }}</li>
+          {% endfor %}
+        </ul>
+      </section>
+      {% endif %}
+
+      {% if report.structure_judgment %}
+      <section class="lede structure">
+        <h2>{{ report.structure_judgment.title }}</h2>
+        <ul class="evidence">
+          {% for e in report.structure_judgment.evidence %}
+            <li>{{ e }}</li>
+          {% endfor %}
+        </ul>
+      </section>
+      {% endif %}
+
+      {% if report.positions %}
+      <section class="lede">
+        <h2>{{ report.overall.title }}</h2>
+        <ul class="evidence">
+          {% for e in report.overall.evidence %}
+            <li>{{ e }}</li>
+          {% endfor %}
+        </ul>
+      </section>
+      {% endif %}
+
+      {% for p in report.positions %}
+        {% set h = holdings[loop.index0] %}
+        <article class="pos">
+          <div class="pos-head">
+            <div>
+              <h3><a class="pos-name" href="/tech/{{ p.snapshot.code }}">{{ p.snapshot.name }}</a> <span class="code">{{ p.snapshot.kind }} {{ p.snapshot.code }}{% if p.snapshot.place %} · {{ p.snapshot.place }}{% endif %}</span></h3>
+            </div>
+            <form class="inline" method="post" action="/delete/{{ h.id }}">
+              <button class="ghost" type="submit">删掉</button>
+            </form>
+          </div>
+          <div class="nums">
+            <span>数量 {{ p.snapshot.quantity }}</span>
+              <span>成本 {{ "%.4f"|format(p.snapshot.cost) }}</span>
+            {% if p.snapshot.price %}
+              <span>现价 {{ "%.4f"|format(p.snapshot.price) }}</span>
+              {% if p.pnl_pct is not none %}
+                <span class="{{ 'up' if p.pnl_pct >= 0 else 'down' }}">相对成本 {{ "%.1f"|format(p.pnl_pct * 100) }}%</span>
+              {% endif %}
+              {% if h.quote and h.quote.day_change_pct is not none %}
+                <span class="{{ 'up' if h.quote.day_change_pct >= 0 else 'down' }}">今日 {{ "%.2f"|format(h.quote.day_change_pct * 100) }}%</span>
+              {% endif %}
+            {% else %}
+              <span>现价 没有</span>
+            {% endif %}
+            {% if p.market_value %}
+              <span>市值 {{ "%.2f"|format(p.market_value) }}</span>
+            {% endif %}
+          </div>
+          {% for j in p.items %}
+            <div class="judge level-{{ j.level }} kind-{{ j.kind }}">
+              <strong>{% if j.kind == "现状" %}现在：{% endif %}{{ j.title }}</strong>
+              <ul class="evidence">
+                {% for e in j.evidence %}<li>{{ e }}</li>{% endfor %}
+              </ul>
+            </div>
+          {% endfor %}
+        </article>
+      {% endfor %}
+    {% else %}
+      <p class="empty">还没有记录。先在下面加上股票或基金的代码、数量、成本，再点刷新行情。</p>
+    {% endif %}
+
+    <section class="register">
+      <h2>看一只还没买的</h2>
+      <form method="post" action="/look">
+        <div class="row">
+          <label>类型
+            <select name="kind">
+              <option value="基金">基金</option>
+              <option value="股票">股票</option>
+            </select>
+          </label>
+          <label>代码
+            <input name="code" required placeholder="510300" />
+          </label>
+          <label>数量（可空）
+            <input name="quantity" type="number" step="any" placeholder="可空" />
+          </label>
+          <button type="submit">看</button>
+        </div>
+      </form>
+      <p class="meta">不记入持仓。看贵不贵、和手里这些重不重。数量填了会估算加进去后占多少。</p>
+      {% if look %}
+      <section class="lede look">
+        {% if look_snapshot %}
+        <p class="meta">{{ look_snapshot.kind }} {{ look_snapshot.code }} {{ look_snapshot.name }}{% if look_snapshot.price %} · {{ "%.4f"|format(look_snapshot.price) }}{% endif %}</p>
+        {% endif %}
+        <h2>{{ look.title }}</h2>
+        <ul class="evidence">
+          {% for e in look.evidence %}
+            <li>{{ e }}</li>
+          {% endfor %}
+        </ul>
+      </section>
+      {% endif %}
+    </section>
+
+    <section class="register">
+      <h2>加上一只</h2>
+      <form method="post" action="/add">
+        <div class="row">
+          <label>类型
+            <select name="kind">
+              <option value="股票">股票</option>
+              <option value="基金">基金</option>
+            </select>
+          </label>
+          <label>代码
+            <input name="code" required placeholder="600519" />
+          </label>
+          <label>数量
+            <input name="quantity" type="number" step="any" required />
+          </label>
+          <label>成本
+            <input name="cost" type="number" step="any" required />
+          </label>
+          <label>在哪买
+            <select name="place">
+              <option value="佣金宝">佣金宝</option>
+              <option value="支付宝">支付宝</option>
+            </select>
+          </label>
+          <label>名称（可空）
+            <input name="name" placeholder="可空，刷新后补" />
+          </label>
+          <button type="submit">加上</button>
+        </div>
+      </form>
+      <p class="meta">支付宝买的场外基金：填 6 位代码、份额、成本净值。刷新后用净值，不是交易所现价。</p>
+    </section>
+  </div>
+</body>
+</html>

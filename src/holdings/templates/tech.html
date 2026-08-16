@@ -1,0 +1,474 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>{{ name }} · 技术</title>
+  <style>
+    :root {
+      --paper: #f3ead8;
+      --ink: #1b1712;
+      --muted: #6b6256;
+      --rule: #c9bba3;
+      --up: #b42318;
+      --down: #1f6b45;
+      --stamp: #9b1c1c;
+      --card: #faf6ee;
+    }
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      background: var(--paper);
+      color: var(--ink);
+      font-family: "Songti SC", "Noto Serif SC", "Source Han Serif SC", Palatino, serif;
+      line-height: 1.55;
+    }
+    .wrap { max-width: 860px; margin: 0 auto; padding: 40px 24px 80px; }
+    .lede {
+      border-left: 3px solid var(--ink);
+      padding: 8px 0 8px 16px;
+      margin: 0 0 32px;
+    }
+    .tech-stance { margin: 12px 0 20px; }
+    .tech-stance h3 { margin: 0 0 8px; font-size: 20px; }
+    .tech-group { margin-bottom: 18px; }
+    .tech-group h4 { margin: 0 0 10px; letter-spacing: 0.12em; font-size: 14px; }
+    .tech-group.quiet summary {
+      cursor: pointer; color: var(--muted); margin-bottom: 10px;
+      font-size: 14px; letter-spacing: 0.08em;
+    }
+    .tech-item { border-top: 1px solid var(--rule); padding: 10px 0; }
+    .tech-item strong { display: block; margin-bottom: 2px; }
+    .tech-item p { margin: 0 0 4px; }
+    .tech-item .tech-about { color: var(--muted); font-size: 13px; line-height: 1.45; margin-bottom: 6px; }
+    .tech-item.signal strong { color: var(--stamp); }
+    .tech-model { border-left-color: #2a4a6b; margin: 12px 0 20px; }
+    .tech-model h4 { margin: 0 0 6px; font-size: 14px; letter-spacing: 0.12em; }
+    .tech-model p { margin: 0 0 6px; }
+    .evidence { margin: 0; padding-left: 1.2em; color: var(--muted); font-size: 14px; font-family: "Iowan Old Style", Palatino, serif; }
+    .code { color: var(--muted); font-family: "IBM Plex Mono", "Menlo", monospace; font-size: 13px; letter-spacing: 0.04em; }
+    .err { color: var(--stamp); margin-bottom: 16px; }
+    .meta { font-size: 12px; color: var(--muted); }
+    .meta a { color: var(--muted); }
+    .meta a:hover { color: var(--stamp); }
+    .tech-head h2 { margin: 0 0 6px; font-size: 24px; }
+    .chanlun-chart-wrap { margin: 12px 0 16px; }
+    .chanlun-chart-wrap canvas {
+      display: block;
+      width: 100%;
+      height: 320px;
+      background: var(--card);
+      border: 1px solid var(--rule);
+    }
+    .chanlun-legend { margin: 8px 0 0; font-size: 12px; color: var(--muted); }
+    .chanlun-tip { min-height: 1.4em; margin: 6px 0 0; font-size: 13px; color: var(--ink); }
+  </style>
+</head>
+<body>
+  <div class="wrap">
+    <p class="meta"><a href="/">← 返回持仓</a></p>
+
+    <section class="tech-body">
+      {% if error %}
+        <p class="err">{{ error }}</p>
+      {% else %}
+        <header class="tech-head">
+          <h2>{{ name }} <span class="code">{{ kind }} {{ code }}</span></h2>
+          {% if price is not none %}
+            <p class="meta">现价 {{ "%.4f"|format(price) }}</p>
+          {% endif %}
+        </header>
+
+        <section class="lede tech-stance">
+          <h3>{{ report.stance }}</h3>
+          <ul class="evidence">
+            {% for e in report.stance_evidence %}
+              <li>{{ e }}</li>
+            {% endfor %}
+          </ul>
+        </section>
+
+        {% if report.trend_title %}
+        <section class="tech-group">
+          <h4>走势</h4>
+          <p><strong>{{ report.trend_title }}</strong></p>
+          <ul class="evidence">
+            {% for e in report.trend_evidence %}
+              <li>{{ e }}</li>
+            {% endfor %}
+          </ul>
+        </section>
+        {% endif %}
+
+        {% if report.guides %}
+        <section class="tech-group">
+          <h4>对照</h4>
+          <p class="meta">从 easy_tdx 常见做法抽出来的四条，用这只的日 K 核对；不是选股扫描，也不是保证。</p>
+          {% for g in report.guides %}
+          <article class="tech-item">
+            <strong>{{ g.title }}</strong>
+            <ul class="evidence">
+              {% for e in g.evidence %}<li>{{ e }}</li>{% endfor %}
+            </ul>
+          </article>
+          {% endfor %}
+        </section>
+        {% endif %}
+
+        {% if report.model_status == "ok" and report.model_note %}
+        <section class="lede tech-model">
+          <h4>说明</h4>
+          <p>{{ report.model_note }}</p>
+          <p class="meta">由 DeepSeek 根据上面的依据生成：先论证再判断，不是无依据的一句买卖。</p>
+        </section>
+        {% elif report.model_status == "error" %}
+        <p class="meta">说明：模型这次没写出来{% if report.model_note %}（{{ report.model_note }}）{% endif %}。</p>
+        {% elif report.model_status == "skipped" %}
+        <p class="meta">说明：未接 DeepSeek（设置环境变量 DEEPSEEK_API_KEY 后，点开会多一段白话）。</p>
+        {% endif %}
+
+        {% if report.capital %}
+        <section class="tech-group">
+          <h4>资金</h4>
+          <p><strong>{{ report.capital.title }}</strong></p>
+          <ul class="evidence">{% for e in report.capital.evidence %}<li>{{ e }}</li>{% endfor %}</ul>
+        </section>
+        {% endif %}
+        {% if report.boards %}
+        <section class="tech-group">
+          <h4>板块</h4>
+          {% for b in report.boards %}
+          <article class="tech-item">
+            <strong>{{ b.title }}</strong>
+            <ul class="evidence">{% for e in b.evidence %}<li>{{ e }}</li>{% endfor %}</ul>
+          </article>
+          {% endfor %}
+        </section>
+        {% endif %}
+
+        {% if report.unusual %}
+        <section class="tech-group">
+          <h4>异动</h4>
+          <p><strong>{{ report.unusual.title }}</strong></p>
+          <p class="meta">来自 easy_tdx 全市场异动名单，只留下这只代码。没有对上就写没出现。</p>
+          {% if report.unusual.evidence %}
+          <ul class="evidence">
+            {% for e in report.unusual.evidence %}<li>{{ e }}</li>{% endfor %}
+          </ul>
+          {% endif %}
+        </section>
+        {% endif %}
+
+        {% if report.chanlun %}
+        <section class="tech-group">
+          <h4>缠论</h4>
+          <p><strong>{{ report.chanlun.title }}</strong></p>
+          <p class="meta">{{ report.chanlun.note }}</p>
+          {% if report.chanlun.klines %}
+          <div class="chanlun-chart-wrap">
+            <canvas id="chanlun-chart" width="800" height="320"></canvas>
+            <p class="chanlun-legend">K 线 · 折线是笔 · 色带是中枢上下沿 · 三角是买卖点（红买 / 绿卖）。点三角看说明。</p>
+            <p class="chanlun-tip" id="chanlun-tip"></p>
+          </div>
+          <script type="application/json" id="chanlun-data">{{ {
+            "klines": report.chanlun.klines,
+            "bis": report.chanlun.bis,
+            "zss": report.chanlun.zss,
+            "mmds": report.chanlun.mmds
+          } | tojson }}</script>
+          {% elif report.chanlun.counts %}
+          <ul class="evidence">
+            {% for k, v in report.chanlun.counts.items() %}
+              <li>{{ k }} {{ v }}</li>
+            {% endfor %}
+          </ul>
+          {% endif %}
+
+          <details class="tech-group quiet">
+            <summary>缠论明细（点开看数字）</summary>
+          {% if report.chanlun.counts %}
+          <ul class="evidence">
+            {% for k, v in report.chanlun.counts.items() %}
+              <li>{{ k }} {{ v }}</li>
+            {% endfor %}
+          </ul>
+          {% endif %}
+
+          <details class="tech-group quiet">
+            <summary>分型（{{ report.chanlun.fractals|length }}）</summary>
+            {% if report.chanlun.fractals %}
+            <ul class="evidence">
+              {% for row in report.chanlun.fractals %}
+                <li>[{{ row.index }}] {% if row.type == 'ding' %}顶{% elif row.type == 'di' %}底{% else %}{{ row.type }}{% endif %} {{ row.date }} 值 {{ row.val }}{% if row.done is defined and not row.done %} …{% else %} ✓{% endif %}</li>
+              {% endfor %}
+            </ul>
+            {% else %}
+            <p class="meta">没有分型记录。</p>
+            {% endif %}
+          </details>
+
+          <details class="tech-group quiet">
+            <summary>笔（{{ report.chanlun.bis|length }}）</summary>
+            {% if report.chanlun.bis %}
+            <ul class="evidence">
+              {% for row in report.chanlun.bis %}
+                <li>[{{ row.index }}] {% if row.direction == 'up' %}向上{% elif row.direction == 'down' %}向下{% else %}{{ row.direction }}{% endif %} {{ row.start_date }} → {{ row.end_date }} 高 {{ row.high }} 低 {{ row.low }}{% if row.done %} ✓{% else %} …{% endif %}</li>
+              {% endfor %}
+            </ul>
+            {% else %}
+            <p class="meta">没有笔记录。</p>
+            {% endif %}
+          </details>
+
+          <details class="tech-group quiet">
+            <summary>中枢（{{ report.chanlun.zss|length }}）</summary>
+            {% if report.chanlun.zss %}
+            <ul class="evidence">
+              {% for row in report.chanlun.zss %}
+                <li>[{{ row.index }}] 上沿 {{ row.zg }} 下沿 {{ row.zd }} 最高 {{ row.gg }} 最低 {{ row.dd }} 笔数 {{ row.line_count }} {{ row.start_date }} → {{ row.end_date }}{% if row.done %} ✓{% else %} …{% endif %}</li>
+              {% endfor %}
+            </ul>
+            {% else %}
+            <p class="meta">没有中枢记录。</p>
+            {% endif %}
+          </details>
+
+          <details class="tech-group quiet">
+            <summary>线段（{{ report.chanlun.xds|length }}）</summary>
+            {% if report.chanlun.xds %}
+            <ul class="evidence">
+              {% for row in report.chanlun.xds %}
+                <li>[{{ row.index }}] {% if row.direction == 'up' %}向上{% elif row.direction == 'down' %}向下{% else %}{{ row.direction }}{% endif %} {{ row.start_date }} → {{ row.end_date }} 高 {{ row.high }} 低 {{ row.low }}</li>
+              {% endfor %}
+            </ul>
+            {% else %}
+            <p class="meta">没有线段记录。</p>
+            {% endif %}
+          </details>
+
+          <details class="tech-group quiet">
+            <summary>买卖点（{{ report.chanlun.mmds|length }}）</summary>
+            {% if report.chanlun.mmds %}
+            <ul class="evidence">
+              {% for row in report.chanlun.mmds %}
+                <li>{{ row.type }} {{ row.date }} {{ row.msg }}</li>
+              {% endfor %}
+            </ul>
+            {% else %}
+            <p class="meta">没有买卖点记录。</p>
+            {% endif %}
+          </details>
+
+          <details class="tech-group quiet">
+            <summary>背驰（{{ report.chanlun.bcs|length }}）</summary>
+            {% if report.chanlun.bcs %}
+            <ul class="evidence">
+              {% for row in report.chanlun.bcs %}
+                <li>{{ row.type }} {{ row.curr_date }} {{ row.msg }}</li>
+              {% endfor %}
+            </ul>
+            {% else %}
+            <p class="meta">没有背驰记录。</p>
+            {% endif %}
+          </details>
+          </details>
+        </section>
+        {% endif %}
+
+        {% if report.signals %}
+        <section class="tech-group">
+          <h4>有信号</h4>
+          {% for s in report.signals %}
+          <article class="tech-item signal">
+            <strong>{{ s.name }}</strong>
+            {% if s.about %}<p class="tech-about">{{ s.about }}</p>{% endif %}
+            <p>{{ s.reading }}</p>
+            <ul class="evidence">
+              {% for e in s.evidence %}<li>{{ e }}</li>{% endfor %}
+            </ul>
+          </article>
+          {% endfor %}
+        </section>
+        {% endif %}
+
+        {% if report.quiet %}
+        <details class="tech-group quiet">
+          <summary>其余指标（{{ report.quiet|length }}）</summary>
+          {% for s in report.quiet %}
+          <article class="tech-item">
+            <strong>{{ s.name }}</strong>
+            {% if s.about %}<p class="tech-about">{{ s.about }}</p>{% endif %}
+            <p>{{ s.reading }}</p>
+            <ul class="evidence">
+              {% for e in s.evidence %}<li>{{ e }}</li>{% endfor %}
+            </ul>
+          </article>
+          {% endfor %}
+        </details>
+        {% endif %}
+      {% endif %}
+    </section>
+  </div>
+  <script>
+    (function () {
+      var node = document.getElementById("chanlun-data");
+      var canvas = document.getElementById("chanlun-chart");
+      if (!node || !canvas) return;
+      var data;
+      try { data = JSON.parse(node.textContent); } catch (e) { return; }
+      var klines = data.klines || [];
+      if (!klines.length) return;
+
+      function day(s) { return (s || "").slice(0, 10); }
+      var indexOf = {};
+      klines.forEach(function (k, i) { indexOf[day(k.date)] = i; });
+
+      var hits = [];
+      var padL = 52, padR = 12, padT = 16, padB = 28;
+
+      function layout() {
+        var cssW = canvas.clientWidth || 800;
+        var cssH = 320;
+        var dpr = window.devicePixelRatio || 1;
+        canvas.width = Math.floor(cssW * dpr);
+        canvas.height = Math.floor(cssH * dpr);
+        canvas.style.width = cssW + "px";
+        canvas.style.height = cssH + "px";
+        var ctx = canvas.getContext("2d");
+        ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+        return { ctx: ctx, w: cssW, h: cssH };
+      }
+
+      function draw() {
+        var L = layout();
+        var ctx = L.ctx, w = L.w, h = L.h;
+        hits = [];
+        var plotW = w - padL - padR;
+        var plotH = h - padT - padB;
+        var ymin = Infinity, ymax = -Infinity;
+        klines.forEach(function (k) {
+          ymin = Math.min(ymin, k.low);
+          ymax = Math.max(ymax, k.high);
+        });
+        (data.zss || []).forEach(function (z) {
+          if (z.zd != null) ymin = Math.min(ymin, z.zd);
+          if (z.zg != null) ymax = Math.max(ymax, z.zg);
+        });
+        if (!(ymax > ymin)) { ymax = ymin + 1; }
+        var pad = (ymax - ymin) * 0.06;
+        ymin -= pad; ymax += pad;
+        function xOf(i) { return padL + (i + 0.5) * plotW / klines.length; }
+        function yOf(p) { return padT + (ymax - p) / (ymax - ymin) * plotH; }
+        function idx(date) {
+          var i = indexOf[day(date)];
+          return i == null ? -1 : i;
+        }
+
+        ctx.clearRect(0, 0, w, h);
+        ctx.fillStyle = "#faf6ee";
+        ctx.fillRect(0, 0, w, h);
+        ctx.strokeStyle = "#c9bba3";
+        ctx.strokeRect(padL, padT, plotW, plotH);
+
+        ctx.fillStyle = "#6b6256";
+        ctx.font = "11px Palatino, serif";
+        ctx.textAlign = "right";
+        ctx.textBaseline = "middle";
+        for (var g = 0; g < 4; g++) {
+          var p = ymin + (ymax - ymin) * g / 3;
+          var y = yOf(p);
+          ctx.strokeStyle = "rgba(201,187,163,0.45)";
+          ctx.beginPath(); ctx.moveTo(padL, y); ctx.lineTo(padL + plotW, y); ctx.stroke();
+          ctx.fillText(p.toFixed(3), padL - 6, y);
+        }
+
+        var slot = plotW / klines.length;
+        var cw = Math.max(1, slot * 0.62);
+        klines.forEach(function (k, i) {
+          var x = xOf(i);
+          var up = k.close >= k.open;
+          ctx.strokeStyle = up ? "#b42318" : "#1f6b45";
+          ctx.fillStyle = up ? "#b42318" : "#1f6b45";
+          ctx.beginPath();
+          ctx.moveTo(x, yOf(k.high));
+          ctx.lineTo(x, yOf(k.low));
+          ctx.stroke();
+          var y1 = yOf(Math.max(k.open, k.close));
+          var y2 = yOf(Math.min(k.open, k.close));
+          var bh = Math.max(1, y2 - y1);
+          ctx.fillRect(x - cw / 2, y1, cw, bh);
+        });
+
+        ctx.globalAlpha = 0.22;
+        (data.zss || []).forEach(function (z) {
+          var a = idx(z.start_date), b = idx(z.end_date);
+          if (a < 0) a = 0;
+          if (b < 0) b = klines.length - 1;
+          if (b < a) { var t = a; a = b; b = t; }
+          var x1 = xOf(a) - cw / 2, x2 = xOf(b) + cw / 2;
+          ctx.fillStyle = "#2a4a6b";
+          ctx.fillRect(x1, yOf(z.zg), x2 - x1, yOf(z.zd) - yOf(z.zg));
+        });
+        ctx.globalAlpha = 1;
+
+        ctx.lineWidth = 1.4;
+        (data.bis || []).forEach(function (bi) {
+          var a = idx(bi.start_date), b = idx(bi.end_date);
+          if (a < 0 || b < 0) return;
+          var up = bi.direction === "up";
+          var y1 = yOf(up ? bi.low : bi.high);
+          var y2 = yOf(up ? bi.high : bi.low);
+          ctx.strokeStyle = up ? "#9b1c1c" : "#1f6b45";
+          ctx.beginPath();
+          ctx.moveTo(xOf(a), y1);
+          ctx.lineTo(xOf(b), y2);
+          ctx.stroke();
+        });
+        ctx.lineWidth = 1;
+
+        (data.mmds || []).forEach(function (m) {
+          var i = idx(m.date);
+          if (i < 0) return;
+          var buy = String(m.type || "").toLowerCase().indexOf("buy") >= 0
+            || String(m.type || "").indexOf("买") >= 0;
+          var x = xOf(i);
+          var k = klines[i];
+          var y = buy ? yOf(k.low) + 10 : yOf(k.high) - 10;
+          ctx.fillStyle = buy ? "#b42318" : "#1f6b45";
+          ctx.beginPath();
+          if (buy) {
+            ctx.moveTo(x, y + 6); ctx.lineTo(x - 5, y - 4); ctx.lineTo(x + 5, y - 4);
+          } else {
+            ctx.moveTo(x, y - 6); ctx.lineTo(x - 5, y + 4); ctx.lineTo(x + 5, y + 4);
+          }
+          ctx.closePath();
+          ctx.fill();
+          hits.push({ x: x, y: y, r: 10, text: (m.type || "") + " " + (m.date || "") + " " + (m.msg || "") });
+        });
+
+        ctx.fillStyle = "#6b6256";
+        ctx.textAlign = "center";
+        ctx.textBaseline = "top";
+        var step = Math.max(1, Math.floor(klines.length / 5));
+        for (var i = 0; i < klines.length; i += step) {
+          ctx.fillText(day(klines[i].date).slice(5), xOf(i), padT + plotH + 6);
+        }
+      }
+
+      draw();
+      window.addEventListener("resize", draw);
+      canvas.addEventListener("click", function (ev) {
+        var rect = canvas.getBoundingClientRect();
+        var x = ev.clientX - rect.left, y = ev.clientY - rect.top;
+        var tip = document.getElementById("chanlun-tip");
+        var found = null, best = 999;
+        hits.forEach(function (h) {
+          var d = Math.hypot(h.x - x, h.y - y);
+          if (d < h.r && d < best) { best = d; found = h; }
+        });
+        if (tip) tip.textContent = found ? found.text : "";
+      });
+    })();
+  </script>
+</body>
+</html>
