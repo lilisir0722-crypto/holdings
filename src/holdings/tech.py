@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 import math
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 
 
 @dataclass
@@ -60,6 +60,14 @@ class GuideBlock:
 
 
 @dataclass
+class InfoBlock:
+    title: str
+    evidence: list[str] = field(default_factory=list)
+    ok: bool = False
+    summary_line: str | None = None
+
+
+@dataclass
 class TechReport:
     stance: str
     stance_evidence: list[str]
@@ -74,6 +82,11 @@ class TechReport:
     unusual: UnusualBlock | None = None
     chanlun: ChanlunBlock | None = None
     guides: list[GuideBlock] = field(default_factory=list)
+    timeframes: InfoBlock | None = None
+    relative: InfoBlock | None = None
+    intraday: InfoBlock | None = None
+    xdxr: InfoBlock | None = None
+    etf: InfoBlock | None = None
 
 
 @dataclass
@@ -344,6 +357,16 @@ EMPTY_MARKET_CTX = {
     "belong_df": None,
     "board_summaries": {},
     "unusual_df": None,
+    "weekly_df": None,
+    "min60_df": None,
+    "hs300_df": None,
+    "board_klines": {},
+    "board_rank_1d": None,
+    "board_rank_20d": None,
+    "tick_df": None,
+    "auction_df": None,
+    "xdxr_df": None,
+    "etf": None,
 }
 
 
@@ -1345,21 +1368,7 @@ def enrich_with_account(
     elif bearish and cash_known and cash_total < max(1000.0, book_value * 0.05 if book_value else 0):
         stance = stance.rstrip("。") + "。现金也不多；若减仓，先想清楚是为了止亏还是留钱以后再用。"
 
-    return TechReport(
-        stance=stance,
-        stance_evidence=evidence,
-        signals=report.signals,
-        quiet=report.quiet,
-        trend_title=report.trend_title,
-        trend_evidence=list(report.trend_evidence),
-        model_note=report.model_note,
-        model_status=report.model_status,
-        capital=report.capital,
-        boards=list(report.boards),
-        unusual=report.unusual,
-        chanlun=report.chanlun,
-        guides=list(report.guides),
-    )
+    return replace(report, stance=stance, stance_evidence=evidence)
 
 
 def analyze_indicators(series: dict[str, list[float]]) -> TechReport:

@@ -100,6 +100,16 @@
         </section>
         {% endif %}
 
+        {% if report.timeframes %}
+        <section class="tech-group">
+          <h4>多周期</h4>
+          <p><strong>{{ report.timeframes.title }}</strong></p>
+          <ul class="evidence">
+            {% for e in report.timeframes.evidence %}<li>{{ e }}</li>{% endfor %}
+          </ul>
+        </section>
+        {% endif %}
+
         {% if report.guides %}
         <section class="tech-group">
           <h4>对照</h4>
@@ -112,6 +122,16 @@
             </ul>
           </article>
           {% endfor %}
+        </section>
+        {% endif %}
+
+        {% if report.relative %}
+        <section class="tech-group">
+          <h4>相对强弱</h4>
+          <p><strong>{{ report.relative.title }}</strong></p>
+          <ul class="evidence">
+            {% for e in report.relative.evidence %}<li>{{ e }}</li>{% endfor %}
+          </ul>
         </section>
         {% endif %}
 
@@ -143,6 +163,34 @@
             <ul class="evidence">{% for e in b.evidence %}<li>{{ e }}</li>{% endfor %}</ul>
           </article>
           {% endfor %}
+        </section>
+        {% endif %}
+
+        {% if report.intraday %}
+        <section class="tech-group">
+          <h4>分时 / 竞价</h4>
+          <p><strong>{{ report.intraday.title }}</strong></p>
+          <ul class="evidence">
+            {% for e in report.intraday.evidence %}<li>{{ e }}</li>{% endfor %}
+          </ul>
+        </section>
+        {% endif %}
+        {% if report.xdxr %}
+        <section class="tech-group">
+          <h4>除权除息</h4>
+          <p><strong>{{ report.xdxr.title }}</strong></p>
+          <ul class="evidence">
+            {% for e in report.xdxr.evidence %}<li>{{ e }}</li>{% endfor %}
+          </ul>
+        </section>
+        {% endif %}
+        {% if report.etf %}
+        <section class="tech-group">
+          <h4>ETF</h4>
+          <p><strong>{{ report.etf.title }}</strong></p>
+          <ul class="evidence">
+            {% for e in report.etf.evidence %}<li>{{ e }}</li>{% endfor %}
+          </ul>
         </section>
         {% endif %}
 

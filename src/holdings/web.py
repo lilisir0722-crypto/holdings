@@ -11,9 +11,11 @@ from fastapi.templating import Jinja2Templates
 from holdings.judge import judge_all, look_one
 from holdings.market import (
     fetch_all,
+    fetch_eastmoney_etf,
     fetch_kline,
     fetch_market_context,
     fetch_one,
+    fetch_xdxr,
     open_mac_client,
     to_market_snapshot,
     to_snapshot,
@@ -26,6 +28,7 @@ from holdings.tech import (
     attach_market_context,
     enrich_with_account,
 )
+from holdings.tech_extra import attach_tech_extras, is_listed_etf
 
 DATA = Path.cwd() / "data" / "holdings.json"
 TEMPLATES = Jinja2Templates(directory=str(Path(__file__).resolve().parent / "templates"))
@@ -173,6 +176,18 @@ def tech(request: Request, code: str):
                 ctx = fetch_market_context(client, code)
             except Exception:
                 ctx = {"capital_df": None, "belong_df": None, "board_summaries": {}, "unusual_df": None}
+        if ctx is None:
+            ctx = {}
+        ctx["daily_df"] = kdf
+        try:
+            ctx["xdxr_df"] = fetch_xdxr(code)
+        except Exception:
+            ctx["xdxr_df"] = None
+        if is_listed_etf(code):
+            try:
+                ctx["etf"] = fetch_eastmoney_etf(code)
+            except Exception:
+                ctx["etf"] = {}
     except Exception as exc:
         return TEMPLATES.TemplateResponse(
             request,
@@ -194,6 +209,7 @@ def tech(request: Request, code: str):
             quiet=[],
         )
         empty = attach_market_context(empty, ctx, code=code)
+        empty = attach_tech_extras(empty, ctx, code=code)
         empty.chanlun = analyze_chanlun(None, code)
         return TEMPLATES.TemplateResponse(
             request,
@@ -245,6 +261,7 @@ def tech(request: Request, code: str):
         price=price,
     )
     report = attach_market_context(report, ctx, code=code)
+    report = attach_tech_extras(report, ctx, code=code)
     report.chanlun = analyze_chanlun(kdf, code)
     from holdings.llm import explain_tech
 
@@ -258,6 +275,11 @@ def tech(request: Request, code: str):
         "走势": report.trend_title,
         "走势依据": report.trend_evidence,
         "对照": [{"标题": g.title, "依据": g.evidence} for g in report.guides],
+        "多周期": report.timeframes.title if report.timeframes else None,
+        "相对强弱": report.relative.title if report.relative else None,
+        "分时": report.intraday.title if report.intraday else None,
+        "除权": report.xdxr.title if report.xdxr else None,
+        "ETF": report.etf.title if report.etf else None,
         "有信号": [
             {"指标": s.name, "解读": s.reading, "依据": s.evidence} for s in report.signals
         ],

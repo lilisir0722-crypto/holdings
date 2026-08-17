@@ -9,7 +9,7 @@ from datetime import date, datetime, timedelta, timezone
 from easy_tdx import MacClient, Market, ping_mac_all
 from easy_tdx.cninfo import CninfoClient
 from easy_tdx.config import get_mac_hosts, get_port, save_best_mac_host
-from easy_tdx.mac.enums import Period
+from easy_tdx.mac.enums import Adjust, BoardType, Period
 
 from holdings.judge import MarketSnapshot, PositionSnapshot
 from holdings.store import Holding
@@ -384,6 +384,28 @@ def fetch_one(kind: str, code: str, name: str = "") -> dict:
     return quote
 
 
+def _as_df(val):
+    try:
+        import pandas as pd
+
+        if isinstance(val, pd.DataFrame):
+            return val
+    except Exception:
+        return None
+    return None
+
+
+def _kline(client, market: int, code: str, period, count: int):
+    try:
+        return _as_df(
+            client.get_stock_kline(
+                market, code, period=period, count=count, adjust=Adjust.QFQ
+            )
+        )
+    except Exception:
+        return None
+
+
 def fetch_market_context(client, code: str) -> dict:
     """Return capital/board pieces; never raise for soft failures."""
     from holdings.tech import select_belong_boards
@@ -393,6 +415,15 @@ def fetch_market_context(client, code: str) -> dict:
         "belong_df": None,
         "board_summaries": {},
         "unusual_df": None,
+        "weekly_df": None,
+        "min60_df": None,
+        "hs300_df": None,
+        "board_klines": {},
+        "board_names": {},
+        "board_rank_1d": None,
+        "board_rank_20d": None,
+        "tick_df": None,
+        "auction_df": None,
         "error": None,
     }
     try:
@@ -448,7 +479,87 @@ def fetch_market_context(client, code: str) -> dict:
     except Exception as exc:
         unusual_err = f"unusual: {exc}"
         out["error"] = unusual_err if not out["error"] else f"{out['error']}; {unusual_err}"
+
+    out["weekly_df"] = _kline(client, market, code, Period.WEEKLY, 60)
+    out["min60_df"] = _kline(client, market, code, Period.MIN_60, 80)
+    out["hs300_df"] = _kline(client, Market.SH, HS300_CODE, Period.DAILY, 80)
+
+    board_klines: dict = {}
+    board_names: dict = {}
+    for row in selected:
+        bcode = row["board_code"]
+        bdf = _kline(client, market, bcode, Period.DAILY, 80)
+        if bdf is None:
+            bdf = _kline(client, Market.SH, bcode, Period.DAILY, 80)
+        if bdf is not None:
+            board_klines[bcode] = bdf
+            board_names[bcode] = row["board_name"]
+    out["board_klines"] = board_klines
+    out["board_names"] = board_names
+
+    ranks_1d: list = []
+    ranks_20d: list = []
+    for btype in (BoardType.HY, BoardType.GN):
+        try:
+            df1 = _as_df(client.get_board_change_ranking(btype, days=1))
+            if df1 is not None:
+                ranks_1d.append(df1)
+        except Exception:
+            pass
+        try:
+            df20 = _as_df(client.get_board_change_ranking(btype, days=20))
+            if df20 is not None:
+                ranks_20d.append(df20)
+        except Exception:
+            pass
+    out["board_rank_1d"] = ranks_1d or None
+    out["board_rank_20d"] = ranks_20d or None
+
+    try:
+        out["tick_df"] = _as_df(client.get_tick_chart(market, code))
+    except Exception:
+        out["tick_df"] = None
+    try:
+        out["auction_df"] = _as_df(client.get_auction(market, code))
+    except Exception:
+        out["auction_df"] = None
     return out
+
+
+def fetch_xdxr(code: str):
+    """除权除息。MacClient 没有，另开 TdxClient。失败返回 None。"""
+    try:
+        from easy_tdx import TdxClient
+
+        client = TdxClient.from_best_host(timeout=8.0, ping_timeout=2.0)
+        try:
+            mkt = Market.SH if infer_market(code) == "SH" else Market.SZ
+            return _as_df(client.get_xdxr_info(mkt, code.strip()))
+        finally:
+            client.close()
+    except Exception:
+        return None
+
+
+def fetch_eastmoney_etf(code: str) -> dict:
+    from holdings.tech_extra import parse_eastmoney_etf_quote
+
+    market = 1 if infer_market(code) == "SH" else 0
+    url = (
+        "https://push2.eastmoney.com/api/qt/stock/get"
+        f"?invt=2&fltt=2&secid={market}.{code.strip()}"
+        "&fields=f43,f46,f58,f116,f117"
+    )
+    req = urllib.request.Request(
+        url,
+        headers={
+            "User-Agent": "Mozilla/5.0",
+            "Referer": "https://quote.eastmoney.com/",
+        },
+    )
+    with urllib.request.urlopen(req, timeout=8) as resp:
+        raw = json.loads(resp.read().decode())
+    return parse_eastmoney_etf_quote(raw)
 
 
 def fetch_kline(code: str, kind: str = "股票", count: int = 120, client=None):
@@ -459,7 +570,9 @@ def fetch_kline(code: str, kind: str = "股票", count: int = 120, client=None):
     market = _market_enum(code)
 
     def _pull(c):
-        return c.get_stock_kline(market, code, period=Period.DAILY, count=count)
+        return c.get_stock_kline(
+            market, code, period=Period.DAILY, count=count, adjust=Adjust.QFQ
+        )
 
     if client is not None:
         kdf = _pull(client)
