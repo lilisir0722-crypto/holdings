@@ -2,7 +2,10 @@ from __future__ import annotations
 
 import json
 import re
+import threading
+import time
 import urllib.request
+from concurrent.futures import ThreadPoolExecutor
 from contextlib import contextmanager
 from datetime import date, datetime, timedelta, timezone
 
@@ -406,6 +409,107 @@ def _kline(client, market: int, code: str, period, count: int):
         return None
 
 
+_RANK_TTL_SEC = 300.0
+_rank_lock = threading.Lock()
+_rank_cache: tuple[float, list, list] | None = None
+_RANK_JOBS = (
+    ("1d", BoardType.HY, 1),
+    ("20d", BoardType.HY, 20),
+    ("1d", BoardType.GN, 1),
+    ("20d", BoardType.GN, 20),
+)
+
+
+def clear_board_rank_cache() -> None:
+    global _rank_cache
+    with _rank_lock:
+        _rank_cache = None
+
+
+def _rank_cache_get() -> tuple[list | None, list | None] | None:
+    with _rank_lock:
+        if _rank_cache is None:
+            return None
+        ts, ranks_1d, ranks_20d = _rank_cache
+        if time.monotonic() - ts >= _RANK_TTL_SEC:
+            return None
+        return ranks_1d, ranks_20d
+
+
+def _rank_cache_put(ranks_1d: list | None, ranks_20d: list | None) -> None:
+    global _rank_cache
+    if not ranks_1d and not ranks_20d:
+        return
+    with _rank_lock:
+        _rank_cache = (time.monotonic(), ranks_1d, ranks_20d)
+
+
+def _connect_mac(host: str, timeout: float = 10.0):
+    client = MacClient(host, timeout=timeout)
+    client.connect()
+    return client
+
+
+def _rank_one_on_client(client, btype, days: int):
+    try:
+        return _as_df(client.get_board_change_ranking(btype, days=days))
+    except Exception:
+        return None
+
+
+def _rank_one_on_host(host: str, btype, days: int, timeout: float = 10.0):
+    client = None
+    try:
+        client = _connect_mac(host, timeout=timeout)
+        return _rank_one_on_client(client, btype, days)
+    except Exception:
+        return None
+    finally:
+        if client is not None:
+            try:
+                client.close()
+            except Exception:
+                pass
+
+
+def fetch_board_ranks(client) -> tuple[list | None, list | None]:
+    """HY/GN × 1日/20日。有主机地址时各开一条连接并发；结果缓存 5 分钟。
+
+    同一条 MAC 连接不能并行读写，所以并发必须另开连接，不能 ThreadPool 打同一个 client。
+    """
+    hit = _rank_cache_get()
+    if hit is not None:
+        return hit
+    results: dict[tuple, object] = {}
+    host = getattr(client, "_host", None)
+    if isinstance(host, str) and host:
+        with ThreadPoolExecutor(max_workers=4) as pool:
+            futs = {
+                pool.submit(_rank_one_on_host, host, btype, days): (bucket, btype, days)
+                for bucket, btype, days in _RANK_JOBS
+            }
+            for fut, key in futs.items():
+                results[key] = fut.result()
+    else:
+        for bucket, btype, days in _RANK_JOBS:
+            results[(bucket, btype, days)] = _rank_one_on_client(client, btype, days)
+
+    ranks_1d: list = []
+    ranks_20d: list = []
+    for bucket, btype, days in _RANK_JOBS:
+        df = results.get((bucket, btype, days))
+        if df is None:
+            continue
+        if bucket == "1d":
+            ranks_1d.append(df)
+        else:
+            ranks_20d.append(df)
+    out_1d = ranks_1d or None
+    out_20d = ranks_20d or None
+    _rank_cache_put(out_1d, out_20d)
+    return out_1d, out_20d
+
+
 def fetch_market_context(client, code: str) -> dict:
     """Return capital/board pieces; never raise for soft failures."""
     from holdings.tech import select_belong_boards
@@ -497,23 +601,9 @@ def fetch_market_context(client, code: str) -> dict:
     out["board_klines"] = board_klines
     out["board_names"] = board_names
 
-    ranks_1d: list = []
-    ranks_20d: list = []
-    for btype in (BoardType.HY, BoardType.GN):
-        try:
-            df1 = _as_df(client.get_board_change_ranking(btype, days=1))
-            if df1 is not None:
-                ranks_1d.append(df1)
-        except Exception:
-            pass
-        try:
-            df20 = _as_df(client.get_board_change_ranking(btype, days=20))
-            if df20 is not None:
-                ranks_20d.append(df20)
-        except Exception:
-            pass
-    out["board_rank_1d"] = ranks_1d or None
-    out["board_rank_20d"] = ranks_20d or None
+    ranks_1d, ranks_20d = fetch_board_ranks(client)
+    out["board_rank_1d"] = ranks_1d
+    out["board_rank_20d"] = ranks_20d
 
     try:
         out["tick_df"] = _as_df(client.get_tick_chart(market, code))

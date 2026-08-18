@@ -1,3 +1,4 @@
+import time
 from unittest.mock import MagicMock
 
 import pandas as pd
@@ -273,3 +274,47 @@ def test_pick_boards_empty_belong():
     assert not blocks[0].ok
     blob = blocks[0].title + "".join(blocks[0].evidence)
     assert "暂无" in blob or "对不上" in blob
+
+
+def test_board_ranks_cached_for_second_fetch():
+    from holdings import market
+
+    market.clear_board_rank_cache()
+    client = MagicMock()
+    rank_df = pd.DataFrame([{"code": "880001", "name": "半导体", "change_pct": 1.2}])
+    client.get_capital_flow.return_value = pd.DataFrame([{"date": "2026-08-15", "main_net": 1e7}])
+    client.get_belong_board.return_value = pd.DataFrame([{"name": "行业", "code": "HY001"}])
+    client.get_unusual.return_value = pd.DataFrame()
+    client.get_board_summary.return_value = {}
+    client.get_board_change_ranking.return_value = rank_df
+
+    fetch_market_context(client, "600000")
+    first = client.get_board_change_ranking.call_count
+    assert first == 4
+    fetch_market_context(client, "510300")
+    assert client.get_board_change_ranking.call_count == first
+
+
+def test_board_ranks_run_in_parallel(monkeypatch):
+    from holdings import market
+
+    market.clear_board_rank_cache()
+
+    def fake_connect(host, timeout=10.0):
+        c = MagicMock()
+
+        def ranking(btype, days=20):
+            time.sleep(0.25)
+            return pd.DataFrame([{"code": "880001", "change_pct": 1.0}])
+
+        c.get_board_change_ranking.side_effect = ranking
+        return c
+
+    monkeypatch.setattr(market, "_connect_mac", fake_connect)
+    client = MagicMock()
+    client._host = "1.2.3.4"
+    t0 = time.monotonic()
+    r1, r20 = market.fetch_board_ranks(client)
+    elapsed = time.monotonic() - t0
+    assert r1 and r20
+    assert elapsed < 0.7
