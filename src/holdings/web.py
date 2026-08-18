@@ -251,15 +251,6 @@ def tech(request: Request, code: str):
         cost=hit.cost,
         price=price,
     )
-    report = enrich_with_account(
-        report,
-        cash_total=cash.total,
-        cash_known=cash.known,
-        position_value=pos_v,
-        book_value=book,
-        cost=hit.cost,
-        price=price,
-    )
     report = attach_market_context(report, ctx, code=code)
     report = attach_tech_extras(report, ctx, code=code)
     report.chanlun = analyze_chanlun(kdf, code)

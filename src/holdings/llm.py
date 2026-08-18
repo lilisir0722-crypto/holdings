@@ -4,7 +4,25 @@ import json
 import os
 import urllib.error
 import urllib.request
+from collections import OrderedDict
 from typing import Any
+
+_CACHE: OrderedDict[tuple, tuple[str, str]] = OrderedDict()
+_CACHE_MAX = 64
+
+
+def clear_explain_cache() -> None:
+    _CACHE.clear()
+
+
+def _cache_key(payload: dict[str, Any], model: str) -> tuple:
+    code = str(payload.get("代码") or "")
+    price = payload.get("现价")
+    if isinstance(price, (int, float)):
+        price_s = f"{float(price):.4f}"
+    else:
+        price_s = str(price)
+    return (model, code, price_s)
 
 
 SYSTEM_PROMPT = (
@@ -28,6 +46,11 @@ def explain_tech(payload: dict[str, Any]) -> tuple[str | None, str]:
 
     base = (os.environ.get("DEEPSEEK_BASE_URL") or "https://api.deepseek.com").rstrip("/")
     model = (os.environ.get("DEEPSEEK_MODEL") or "deepseek-chat").strip()
+    key = _cache_key(payload, model)
+    cached = _CACHE.get(key)
+    if cached is not None:
+        _CACHE.move_to_end(key)
+        return cached
     url = f"{base}/v1/chat/completions"
 
     system = SYSTEM_PROMPT
@@ -61,6 +84,10 @@ def explain_tech(payload: dict[str, Any]) -> tuple[str | None, str]:
         )
         if not text:
             return None, "error"
+        _CACHE[key] = (text, "ok")
+        _CACHE.move_to_end(key)
+        while len(_CACHE) > _CACHE_MAX:
+            _CACHE.popitem(last=False)
         return text, "ok"
     except (urllib.error.URLError, urllib.error.HTTPError, TimeoutError, json.JSONDecodeError, KeyError, IndexError) as exc:
         return f"模型没写出来：{exc}", "error"
