@@ -75,7 +75,7 @@ def explain_tech(payload: dict[str, Any]) -> tuple[str | None, str]:
         method="POST",
     )
     try:
-        with urllib.request.urlopen(req, timeout=20) as resp:
+        with urllib.request.urlopen(req, timeout=30) as resp:
             raw = json.loads(resp.read().decode("utf-8"))
         text = (
             raw.get("choices", [{}])[0]

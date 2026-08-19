@@ -287,9 +287,20 @@ def tech(request: Request, code: str):
             {"指标": s.name, "指标说明": s.about, "数值": s.evidence}
             for s in report.signals
         ],
-        "已检查无信号": [s.name for s in report.quiet],
+        "无信号指标数值": [
+            {"指标": s.name, "指标说明": s.about, "数值": s.evidence}
+            for s in report.quiet
+        ],
         "可用现金": cash.total if cash.known else None,
     }
+    market_quote = store.load_market()
+    if market_quote:
+        payload["大盘数据"] = {
+            "名称": market_quote.get("name") or "沪深300",
+            "现价": market_quote.get("price"),
+            "今日涨跌幅": market_quote.get("day_change_pct"),
+            "近20日涨跌幅": market_quote.get("change_20d_pct"),
+        }
     if report.capital:
         payload["资金数据"] = [report.capital.title, *report.capital.evidence]
     if report.boards:
@@ -302,6 +313,21 @@ def tech(request: Request, code: str):
         payload["缠论数据"] = {
             "统计": report.chanlun.counts,
             "买卖点": report.chanlun.mmds[-8:] if report.chanlun.mmds else [],
+            "中枢": [
+                {
+                    "上沿": z.get("zg"),
+                    "下沿": z.get("zd"),
+                    "起": z.get("start_date"),
+                    "止": z.get("end_date"),
+                }
+                for z in (report.chanlun.zss or [])[-3:]
+                if isinstance(z, dict)
+            ],
+            "背驰": [
+                {"类型": b.get("type"), "日期": b.get("curr_date"), "说明": b.get("msg")}
+                for b in (report.chanlun.bcs or [])[-4:]
+                if isinstance(b, dict)
+            ],
         }
     if plan.has:
         payload["关键点位"] = [f"{d.level}（{d.label}）" for d in plan.defenses]
