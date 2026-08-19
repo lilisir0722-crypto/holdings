@@ -29,6 +29,7 @@ from holdings.tech import (
     enrich_with_account,
 )
 from holdings.tech_extra import attach_tech_extras, is_listed_etf
+from holdings.overseas import attach_overseas
 
 DATA = Path.cwd() / "data" / "holdings.json"
 TEMPLATES = Jinja2Templates(directory=str(Path(__file__).resolve().parent / "templates"))
@@ -210,6 +211,7 @@ def tech(request: Request, code: str):
         )
         empty = attach_market_context(empty, ctx, code=code)
         empty = attach_tech_extras(empty, ctx, code=code)
+        empty = attach_overseas(empty)
         empty.chanlun = analyze_chanlun(None, code)
         return TEMPLATES.TemplateResponse(
             request,
@@ -253,6 +255,7 @@ def tech(request: Request, code: str):
     )
     report = attach_market_context(report, ctx, code=code)
     report = attach_tech_extras(report, ctx, code=code)
+    report = attach_overseas(report)
     report.chanlun = analyze_chanlun(kdf, code)
     from holdings.llm import explain_tech
 
@@ -271,6 +274,11 @@ def tech(request: Request, code: str):
         "分时": report.intraday.title if report.intraday else None,
         "除权": report.xdxr.title if report.xdxr else None,
         "ETF": report.etf.title if report.etf else None,
+        "海外参照": (
+            {"标题": report.overseas.title, "依据": report.overseas.evidence}
+            if report.overseas
+            else None
+        ),
         "有信号": [
             {"指标": s.name, "解读": s.reading, "依据": s.evidence} for s in report.signals
         ],

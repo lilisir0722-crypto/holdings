@@ -135,6 +135,16 @@
         </section>
         {% endif %}
 
+        {% if report.overseas %}
+        <section class="tech-group">
+          <h4>海外参照</h4>
+          <p><strong>{{ report.overseas.title }}</strong></p>
+          <ul class="evidence">
+            {% for e in report.overseas.evidence %}<li>{{ e }}</li>{% endfor %}
+          </ul>
+        </section>
+        {% endif %}
+
         {% if report.model_status == "ok" and report.model_note %}
         <section class="lede tech-model">
           <h4>说明</h4>

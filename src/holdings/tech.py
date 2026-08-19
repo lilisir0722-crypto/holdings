@@ -87,6 +87,7 @@ class TechReport:
     intraday: InfoBlock | None = None
     xdxr: InfoBlock | None = None
     etf: InfoBlock | None = None
+    overseas: InfoBlock | None = None
 
 
 @dataclass
