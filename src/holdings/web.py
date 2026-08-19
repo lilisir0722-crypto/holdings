@@ -268,59 +268,43 @@ def tech(request: Request, code: str):
     )
     from holdings.llm import explain_tech
 
+    # payload 只装数据和事实（数值、涨跌幅、点位、算法测量结果），不装规则结论：
+    # 说明区要做独立于规则判断的"第二双眼睛"，而不是复述上方结论。
     payload = {
         "名称": name,
         "代码": code,
         "现价": price,
         "成本": hit.cost,
-        "总倾向": report.stance,
-        "总倾向依据": report.stance_evidence,
-        "走势": report.trend_title,
-        "走势依据": report.trend_evidence,
-        "对照": [{"标题": g.title, "依据": g.evidence} for g in report.guides],
-        "多周期": report.timeframes.title if report.timeframes else None,
-        "相对强弱": report.relative.title if report.relative else None,
-        "分时": report.intraday.title if report.intraday else None,
-        "除权": report.xdxr.title if report.xdxr else None,
-        "ETF": report.etf.title if report.etf else None,
-        "海外参照": (
-            {"标题": report.overseas.title, "依据": report.overseas.evidence}
-            if report.overseas
-            else None
-        ),
-        "有信号": [
-            {"指标": s.name, "解读": s.reading, "依据": s.evidence} for s in report.signals
+        "走势数据": report.trend_evidence,
+        "对照数据": [{"方法": g.title, "数据": g.evidence} for g in report.guides],
+        "多周期数据": report.timeframes.evidence if report.timeframes else None,
+        "相对强弱数据": report.relative.evidence if report.relative else None,
+        "分时数据": report.intraday.evidence if report.intraday else None,
+        "除权数据": report.xdxr.evidence if report.xdxr else None,
+        "ETF数据": report.etf.evidence if report.etf else None,
+        "海外数据": report.overseas.evidence if report.overseas else None,
+        "指标数值": [
+            {"指标": s.name, "指标说明": s.about, "数值": s.evidence}
+            for s in report.signals
         ],
+        "已检查无信号": [s.name for s in report.quiet],
         "可用现金": cash.total if cash.known else None,
-        "现金已填": cash.known,
     }
     if report.capital:
-        payload["资金"] = report.capital.title
-        if report.capital.summary_line:
-            payload["资金摘要"] = report.capital.summary_line
+        payload["资金数据"] = [report.capital.title, *report.capital.evidence]
     if report.boards:
-        payload["板块"] = [
-            {"标题": b.title, "摘要": b.summary_line, "依据": b.evidence}
-            for b in report.boards
+        payload["板块数据"] = [
+            {"板块": b.title, "数据": b.evidence} for b in report.boards
         ]
     if report.unusual:
-        payload["异动"] = {
-            "标题": report.unusual.title,
-            "依据": report.unusual.evidence[:20],
-        }
+        payload["异动数据"] = [report.unusual.title, *report.unusual.evidence[:20]]
     if report.chanlun:
-        payload["缠论"] = {
-            "标题": report.chanlun.title,
+        payload["缠论数据"] = {
             "统计": report.chanlun.counts,
             "买卖点": report.chanlun.mmds[-8:] if report.chanlun.mmds else [],
-            "说明": report.chanlun.note,
         }
     if plan.has:
-        payload["预案"] = {
-            "防守位": [f"{d.level}（{d.label}）" for d in plan.defenses],
-            "右侧确认": plan.confirm,
-            "原则": plan.principles,
-        }
+        payload["关键点位"] = [f"{d.level}（{d.label}）" for d in plan.defenses]
     note, status = explain_tech(payload)
     report.model_note = note
     report.model_status = status
