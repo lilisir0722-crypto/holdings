@@ -217,7 +217,9 @@ def tech(request: Request, code: str):
         )
         empty = attach_market_context(empty, ctx, code=code)
         empty = attach_tech_extras(empty, ctx, code=code)
-        empty = attach_overseas(empty)
+        empty = attach_overseas(
+            empty, name=name, boards=list((ctx.get("board_names") or {}).values())
+        )
         empty.chanlun = analyze_chanlun(None, code)
         return TEMPLATES.TemplateResponse(
             request,
@@ -262,7 +264,9 @@ def tech(request: Request, code: str):
     )
     report = attach_market_context(report, ctx, code=code)
     report = attach_tech_extras(report, ctx, code=code)
-    report = attach_overseas(report)
+    report = attach_overseas(
+        report, name=name, boards=list((ctx.get("board_names") or {}).values())
+    )
     report.chanlun = analyze_chanlun(kdf, code)
     plan = build_plan(
         kdf,

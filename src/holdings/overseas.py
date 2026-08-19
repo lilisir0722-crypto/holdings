@@ -1,5 +1,6 @@
-"""外部参照：美股半导体链 + 美股期货 + 汇率利率 + A 股设备龙头/行业指数。
+"""外部参照：通用宏观层（美债/美元/汇率/期货）+ 按持仓行业匹配的行业包。
 
+行业包按名称/板块关键词匹配（pick_pack）；没匹配到就只看宏观层。
 数据源是东方财富 push2 批量报价（期货走 futsseapi）；只读，失败就显示暂无，不影响主流程。
 """
 
@@ -11,22 +12,8 @@ from datetime import datetime
 
 from holdings.tech import InfoBlock
 
-# (secid, 分组)；名称以接口返回的 f14 为准
-WATCHLIST: tuple[tuple[str, str], ...] = (
-    ("251.SOX", "总览"),    # 费城半导体指数
-    ("100.NDX", "总览"),    # 纳斯达克
-    ("105.AMAT", "设备"),   # 应用材料
-    ("105.LRCX", "设备"),   # 拉姆研究/泛林
-    ("105.KLAC", "设备"),   # 科磊
-    ("105.ASML", "设备"),   # 阿斯麦
-    ("105.MU", "存储"),     # 美光
-    ("105.SNDK", "存储"),   # 闪迪
-    ("106.TSM", "制造"),    # 台积电
-    ("0.002371", "龙头"),   # 北方华创
-    ("1.688012", "龙头"),   # 中微公司
-    ("1.688072", "龙头"),   # 拓荆科技
-    ("1.688120", "龙头"),   # 华海清科
-    ("2.931743", "行业"),   # 中证半导体材料设备主题指数
+# 通用宏观层：所有持仓都带。(secid, 分组)；名称以接口返回的 f14 为准
+COMMON_WATCHLIST: tuple[tuple[str, str], ...] = (
     ("171.US30Y", "利率"),  # 美国 30 年期国债收益率
     ("171.US10Y", "利率"),  # 美国 10 年期国债收益率
     ("100.UDI", "汇率"),    # 美元指数
@@ -39,12 +26,62 @@ FUTURES: tuple[tuple[str, str], ...] = (
     ("103.ES00Y", "标普期货"),  # 小型标普当月连续
 )
 
-_GROUP_ORDER = ("总览", "期货", "设备", "存储", "制造", "龙头", "行业", "利率", "汇率")
+# 行业包：keywords 命中名称或板块即启用；watchlist 追加在宏观层之后
+PACKS: dict[str, dict] = {
+    "半导体": {
+        "keywords": ("半导体", "芯片", "集成电路"),
+        "watchlist": (
+            ("251.SOX", "总览"),   # 费城半导体指数
+            ("100.NDX", "总览"),   # 纳斯达克
+            ("105.AMAT", "设备"),  # 应用材料
+            ("105.LRCX", "设备"),  # 拉姆研究/泛林
+            ("105.KLAC", "设备"),  # 科磊
+            ("105.ASML", "设备"),  # 阿斯麦
+            ("105.MU", "存储"),    # 美光
+            ("105.SNDK", "存储"),  # 闪迪
+            ("106.TSM", "制造"),   # 台积电
+            ("0.002371", "龙头"),  # 北方华创
+            ("1.688012", "龙头"),  # 中微公司
+            ("1.688072", "龙头"),  # 拓荆科技
+            ("1.688120", "龙头"),  # 华海清科
+            ("2.931743", "行业"),  # 中证半导体材料设备主题指数
+        ),
+    },
+    "机器人": {
+        "keywords": ("机器人",),
+        "watchlist": (
+            ("105.TSLA", "海外"),  # 特斯拉（人形机器人叙事锚）
+            ("105.NVDA", "海外"),  # 英伟达
+            ("0.300124", "龙头"),  # 汇川技术
+            ("0.002747", "龙头"),  # 埃斯顿
+            ("1.688017", "龙头"),  # 绿的谐波
+            ("0.002472", "龙头"),  # 双环传动
+            ("0.980022", "行业"),  # 国证机器人产业指数
+        ),
+    },
+}
+
+_GROUP_ORDER = ("总览", "海外", "期货", "设备", "存储", "制造", "龙头", "行业", "利率", "汇率")
 
 _HEADERS = {
     "User-Agent": "Mozilla/5.0",
     "Referer": "https://quote.eastmoney.com/",
 }
+
+
+def pick_pack(name: str = "", boards: list[str] | None = None) -> str | None:
+    """按持仓名称/板块关键词选行业包；都没命中返回 None（只看宏观层）。"""
+    hay = [name or "", *(boards or [])]
+    for pack_name, pack in PACKS.items():
+        for kw in pack["keywords"]:
+            if any(kw in h for h in hay):
+                return pack_name
+    return None
+
+
+def watchlist_for(pack: str | None) -> tuple[tuple[str, str], ...]:
+    extra = PACKS.get(pack, {}).get("watchlist", ())
+    return COMMON_WATCHLIST + tuple(extra)
 
 
 def _float_or_none(val) -> float | None:
@@ -120,8 +157,8 @@ def fetch_futures(timeout: float = 8.0) -> dict[str, dict]:
     return out
 
 
-def fetch_overseas(timeout: float = 8.0) -> dict[str, dict]:
-    secids = ",".join(s for s, _ in WATCHLIST)
+def fetch_overseas(timeout: float = 8.0, pack: str | None = None) -> dict[str, dict]:
+    secids = ",".join(s for s, _ in watchlist_for(pack))
     url = (
         "https://push2.eastmoney.com/api/qt/ulist.np/get"
         f"?invt=2&fltt=2&secids={secids}&fields=f12,f13,f14,f2,f3,f124"
@@ -146,7 +183,7 @@ def _yield_word(chg: float | None) -> str:
     return "上行" if chg > 0 else "回落"
 
 
-def summarize_overseas(quotes: dict[str, dict] | None) -> InfoBlock:
+def summarize_overseas(quotes: dict[str, dict] | None, pack: str | None = None) -> InfoBlock:
     if not quotes:
         return InfoBlock(
             title="外部参照暂时没有",
@@ -154,14 +191,14 @@ def summarize_overseas(quotes: dict[str, dict] | None) -> InfoBlock:
             ok=False,
         )
 
+    watchlist = watchlist_for(pack)
     by_group: dict[str, list[str]] = {}
-    for secid, group in WATCHLIST:
+    for secid, group in watchlist:
         q = quotes.get(secid)
         if not q:
             continue
         if group == "利率":
-            chg = q.get("change_pct")
-            line = f"{q['name']} {q['price']:.4f}%，{_yield_word(chg)}（{_fmt_chg(chg)}）"
+            line = f"{q['name']} {q['price']:.4f}%，{_yield_word(q.get('change_pct'))}（{_fmt_chg(q.get('change_pct'))}）"
         elif group == "汇率":
             line = f"{q['name']} {q['price']:.4f}（{_fmt_chg(q.get('change_pct'))}）"
         else:
@@ -179,9 +216,7 @@ def summarize_overseas(quotes: dict[str, dict] | None) -> InfoBlock:
             evidence.append(f"{group}：" + "、".join(lines))
 
     # 时间戳只取 push2 来源；期货接口的时间戳时区口径不同，混进来会把数据时间带偏
-    ts_list = [
-        q["ts"] for secid, _ in WATCHLIST if (q := quotes.get(secid)) and q.get("ts")
-    ]
+    ts_list = [q["ts"] for secid, _ in watchlist if (q := quotes.get(secid)) and q.get("ts")]
     if ts_list:
         stamp = datetime.fromtimestamp(max(ts_list)).strftime("%m-%d %H:%M")
         evidence.append(
@@ -189,11 +224,11 @@ def summarize_overseas(quotes: dict[str, dict] | None) -> InfoBlock:
             "盘前看到的可能是还没走完的数；A 股龙头和行业指数是上个交易日的收盘。"
         )
 
-    sox = quotes.get("251.SOX")
-    nq = quotes.get("103.NQ00Y")
     parts: list[str] = []
+    sox = quotes.get("251.SOX") if any(s == "251.SOX" for s, _ in watchlist) else None
     if sox:
         parts.append(f"费半 {_fmt_chg(sox.get('change_pct'))}")
+    nq = quotes.get("103.NQ00Y")
     if nq:
         parts.append(f"纳指期货 {_fmt_chg(nq.get('change_pct'))}")
     us30y = quotes.get("171.US30Y")
@@ -219,16 +254,23 @@ def summarize_overseas(quotes: dict[str, dict] | None) -> InfoBlock:
         )
     if quotes.get("133.USDCNH"):
         evidence.append("USDCNH 上行 = 人民币相对走弱，对外资情绪偏空；下行则相反。")
-    evidence.append("外盘只影响竞价和情绪；A 股半导体还有自己的高低切换节奏，别拿外盘直接外推全天。")
+    evidence.append("外盘只影响竞价和情绪；A 股还有自己的高低切换节奏，别拿外盘直接外推全天。")
 
     return InfoBlock(title=title, evidence=evidence, ok=True)
 
 
-def attach_overseas(report, *, timeout: float = 8.0):
-    """拉取并挂到 TechReport.overseas；失败挂暂无块，绝不打断主流程。"""
+def attach_overseas(
+    report,
+    *,
+    name: str = "",
+    boards: list[str] | None = None,
+    timeout: float = 8.0,
+):
+    """按持仓选行业包，拉取并挂到 TechReport.overseas；失败挂暂无块，绝不打断主流程。"""
+    pack = pick_pack(name, boards)
     try:
-        quotes = fetch_overseas(timeout=timeout)
+        quotes = fetch_overseas(timeout=timeout, pack=pack)
     except Exception:
         quotes = None
-    report.overseas = summarize_overseas(quotes)
+    report.overseas = summarize_overseas(quotes, pack=pack)
     return report

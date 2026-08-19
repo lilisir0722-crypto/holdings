@@ -2,7 +2,9 @@ from holdings.overseas import (
     attach_overseas,
     parse_futures_payload,
     parse_overseas_payload,
+    pick_pack,
     summarize_overseas,
+    watchlist_for,
 )
 from holdings.tech import TechReport
 
@@ -67,7 +69,7 @@ def test_parse_futures_payload():
 
 
 def test_summarize_overseas_groups_and_hint():
-    block = summarize_overseas(parse_overseas_payload(_payload()))
+    block = summarize_overseas(parse_overseas_payload(_payload()), pack="半导体")
     assert block.ok
     assert "费半" in block.title
     blob = "".join(block.evidence)
@@ -77,7 +79,7 @@ def test_summarize_overseas_groups_and_hint():
 
 
 def test_summarize_overseas_new_groups():
-    block = summarize_overseas(parse_overseas_payload(_payload()))
+    block = summarize_overseas(parse_overseas_payload(_payload()), pack="半导体")
     blob = "".join(block.evidence)
     assert "龙头：北方华创 -8.24%" in blob
     assert "行业：半导体材料设备 -7.10%" in blob
@@ -89,7 +91,7 @@ def test_summarize_overseas_new_groups():
 def test_summarize_overseas_futures_group_and_hint():
     quotes = parse_overseas_payload(_payload())
     quotes["103.NQ00Y"] = parse_futures_payload(_futures_payload(zdf=1.24), "纳指期货")
-    block = summarize_overseas(quotes)
+    block = summarize_overseas(quotes, pack="半导体")
     blob = "".join(block.evidence)
     assert "期货：小型纳指当月连续 +1.24%" in blob
     assert "高开" in blob
@@ -99,16 +101,55 @@ def test_summarize_overseas_futures_group_and_hint():
 def test_summarize_overseas_futures_quiet_no_hint():
     quotes = parse_overseas_payload(_payload())
     quotes["103.NQ00Y"] = parse_futures_payload(_futures_payload(zdf=0.48), "纳指期货")
-    block = summarize_overseas(quotes)
+    block = summarize_overseas(quotes, pack="半导体")
     blob = "".join(block.evidence)
     assert "期货：" in blob
     assert "高开" not in blob and "低开" not in blob
 
 
+def test_pick_pack_by_name_and_boards():
+    assert pick_pack("半导体设备ETF华夏") == "半导体"
+    assert pick_pack("机器人ETF易方达") == "机器人"
+    assert pick_pack("芯片ETF") == "半导体"
+    assert pick_pack("东方电气") is None
+    assert pick_pack("某某股票", ["电源设备", "机器人概念"]) == "机器人"
+    assert pick_pack("", []) is None
+
+
+def test_macro_only_when_no_pack():
+    block = summarize_overseas(parse_overseas_payload(_payload()), pack=None)
+    blob = "".join(block.evidence)
+    assert "利率：" in blob and "汇率：" in blob
+    assert "设备：" not in blob and "龙头：" not in blob and "行业：" not in blob
+    assert "费半" not in block.title
+
+
+def test_robot_pack_groups():
+    raw = _payload()
+    raw["data"]["diff"] += [
+        {"f12": "TSLA", "f13": 105, "f14": "特斯拉", "f2": 300.5, "f3": 1.2, "f124": 1787152800},
+        {"f12": "300124", "f13": 0, "f14": "汇川技术", "f2": 60.1, "f3": -4.2, "f124": 1787152800},
+        {"f12": "980022", "f13": 0, "f14": "机器人产业", "f2": 2100.0, "f3": -3.3, "f124": 1787152800},
+    ]
+    block = summarize_overseas(parse_overseas_payload(raw), pack="机器人")
+    blob = "".join(block.evidence)
+    assert "海外：特斯拉 +1.20%" in blob
+    assert "龙头：汇川技术 -4.20%" in blob
+    assert "行业：机器人产业 -3.30%" in blob
+    assert "设备：" not in blob  # 半导体包的内容不出现
+
+
+def test_watchlist_for_includes_common():
+    semi = dict(watchlist_for("半导体"))
+    assert "171.US30Y" in semi and "251.SOX" in semi
+    macro = dict(watchlist_for(None))
+    assert "171.US30Y" in macro and "251.SOX" not in macro
+
+
 def test_summarize_overseas_big_drop_warns():
     quotes = parse_overseas_payload(_payload())
     quotes["251.SOX"]["change_pct"] = -4.98
-    block = summarize_overseas(quotes)
+    block = summarize_overseas(quotes, pack="半导体")
     assert "承压" in "".join(block.evidence)
 
 
@@ -119,11 +160,11 @@ def test_summarize_overseas_empty():
 
 
 def test_attach_overseas_never_breaks(monkeypatch):
-    def boom(timeout=8.0):
+    def boom(timeout=8.0, pack=None):
         raise RuntimeError("network down")
 
     monkeypatch.setattr("holdings.overseas.fetch_overseas", boom)
     report = TechReport(stance="x", stance_evidence=[], signals=[], quiet=[])
-    out = attach_overseas(report)
+    out = attach_overseas(report, name="半导体设备ETF华夏")
     assert out.overseas is not None
     assert not out.overseas.ok
