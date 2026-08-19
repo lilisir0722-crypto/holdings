@@ -62,6 +62,10 @@
     }
     .chanlun-legend { margin: 8px 0 0; font-size: 12px; color: var(--muted); }
     .chanlun-tip { min-height: 1.4em; margin: 6px 0 0; font-size: 13px; color: var(--ink); }
+    .plan-table { width: 100%; border-collapse: collapse; margin: 10px 0 4px; font-size: 14px; }
+    .plan-table td { border-top: 1px solid var(--rule); padding: 7px 8px 7px 0; vertical-align: top; }
+    .plan-table td:first-child { width: 52%; }
+    .plan-table td:last-child { color: var(--muted); font-family: "Iowan Old Style", Palatino, serif; }
   </style>
 </head>
 <body>
@@ -142,6 +146,23 @@
           <ul class="evidence">
             {% for e in report.overseas.evidence %}<li>{{ e }}</li>{% endfor %}
           </ul>
+        </section>
+        {% endif %}
+
+        {% if plan and plan.has %}
+        <section class="tech-group">
+          <h4>预案</h4>
+          <p><strong>防守位：{% for d in plan.defenses %}{{ "%.3f"|format(d.level) }}（{{ d.label }}）{% if not loop.last %} → {% endif %}{% endfor %}</strong></p>
+          <ul class="evidence">
+            {% if plan.confirm %}<li>{{ plan.confirm }}</li>{% endif %}
+            {% for p in plan.principles %}<li>{{ p }}</li>{% endfor %}
+          </ul>
+          <table class="plan-table">
+            {% for s in plan.scenarios %}
+            <tr><td>{{ s.case }}</td><td>{{ s.action }}</td></tr>
+            {% endfor %}
+          </table>
+          <p class="meta">{{ plan.note }}</p>
         </section>
         {% endif %}
 

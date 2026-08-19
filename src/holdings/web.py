@@ -30,6 +30,7 @@ from holdings.tech import (
 )
 from holdings.tech_extra import attach_tech_extras, is_listed_etf
 from holdings.overseas import attach_overseas
+from holdings.plan import build_plan
 
 DATA = Path.cwd() / "data" / "holdings.json"
 TEMPLATES = Jinja2Templates(directory=str(Path(__file__).resolve().parent / "templates"))
@@ -223,6 +224,7 @@ def tech(request: Request, code: str):
                 "kind": hit.kind,
                 "price": price,
                 "report": empty,
+                "plan": None,
             },
         )
     try:
@@ -257,6 +259,13 @@ def tech(request: Request, code: str):
     report = attach_tech_extras(report, ctx, code=code)
     report = attach_overseas(report)
     report.chanlun = analyze_chanlun(kdf, code)
+    plan = build_plan(
+        kdf,
+        report.chanlun.fractals if report.chanlun and report.chanlun.ok else None,
+        cost=hit.cost,
+        cash_total=cash.total if cash.known else None,
+        book_value=book,
+    )
     from holdings.llm import explain_tech
 
     payload = {
@@ -306,6 +315,12 @@ def tech(request: Request, code: str):
             "买卖点": report.chanlun.mmds[-8:] if report.chanlun.mmds else [],
             "说明": report.chanlun.note,
         }
+    if plan.has:
+        payload["预案"] = {
+            "防守位": [f"{d.level}（{d.label}）" for d in plan.defenses],
+            "右侧确认": plan.confirm,
+            "原则": plan.principles,
+        }
     note, status = explain_tech(payload)
     report.model_note = note
     report.model_status = status
@@ -319,6 +334,7 @@ def tech(request: Request, code: str):
             "kind": hit.kind,
             "price": price,
             "report": report,
+            "plan": plan,
         },
     )
 
