@@ -129,6 +129,19 @@ def test_summarize_intraday_empty():
     assert "没有分时" in block.title
 
 
+def test_summarize_intraday_close_near_low():
+    tick = pd.DataFrame(
+        [
+            {"time": "09:30", "price": 1.089, "vol": 100},
+            {"time": "10:30", "price": 1.102, "vol": 80},
+            {"time": "15:00", "price": 1.041, "vol": 60},
+        ]
+    )
+    block = summarize_intraday(tick, None, prev_close=1.127)
+    blob = "".join(block.evidence)
+    assert "低位" in blob
+
+
 def test_summarize_xdxr_lists_recent_split():
     df = pd.DataFrame(
         [
@@ -180,3 +193,11 @@ def test_summarize_etf_missing():
     block = summarize_etf({}, track_60=None, self_60=None)
     assert not block.ok
     assert "暂无" in block.title
+
+
+def test_summarize_etf_large_discount_warns_iopv():
+    parsed = {"price": 1.041, "iopv": 1.087, "size": 8e9}
+    block = summarize_etf(parsed, track_60=None, self_60=None)
+    blob = "".join(block.evidence)
+    assert "折价" in blob
+    assert "核对 IOPV" in blob

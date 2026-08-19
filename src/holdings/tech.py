@@ -102,7 +102,7 @@ INDICATOR_ABOUT: dict[str, str] = {
     "RSI": "看一段时间内涨跌力量谁占上风。常见看 0–100；大于约 70 常说偏热（超买），小于约 30 常说偏冷（超卖）。",
     "布林": "看价格相对近期波动区间的位置。碰到或突破上轨常说偏热，碰到或跌破下轨常说偏冷；在中轨附近多说中性。",
     "CCI": "看价格是否偏离近期常态。大于约 +100 常说偏热，小于约 −100 常说偏冷。",
-    "WR": "威廉指标，看收盘价在最近高低区间里偏上还是偏下。数值靠近 0（大约大于 −20）常说偏热超买；靠近 −100（大约小于 −80）常说偏冷超卖。",
+    "WR": "威廉指标，看收盘价在最近高低区间里偏上还是偏下。0–100 取值：小于约 20（收在区间顶部）常说偏热超买；大于约 80（收在区间底部）常说偏冷超卖。",
     "均线": "看现价和短、中期平均成本的关系。价格与短均线都在长均线上方，常说偏多头；都在下方，常说偏空头。",
     "ATR": "看近期波动有多大，数值本身不直接说涨跌方向。",
     "BIAS": "看现价偏离均线有多远。偏离过大常提示涨跌已经走得比较急。",
@@ -612,6 +612,8 @@ def _item_macd(series: dict) -> TechItem | None:
         reading = "MACD 柱在零轴上方，偏强但没有新交叉"
     elif hist[-1] < 0:
         reading = "MACD 柱在零轴下方，偏弱但没有新交叉"
+    if len(hist) >= 2 and abs(float(hist[-1])) < abs(float(hist[-2])):
+        reading += "；柱较上日收窄，动能在减弱"
     return TechItem(
         name="MACD",
         reading=reading,
@@ -804,8 +806,8 @@ def _item_wr(series: dict) -> TechItem | None:
     v = float(wr[-1])
     values = {"WR": v}
     evidence = [f"WR {v:.1f}"]
-    # WR typically 0 to -100; overbought near 0, oversold near -100
-    if v >= -20:
+    # easy_tdx WR 取值 0~100：靠近 0 是收在区间顶部（超买偏热），靠近 100 是收在区间底部（超卖偏冷）
+    if v <= 20:
         return TechItem(
             name="WR",
             reading="威廉指标偏热",
@@ -814,7 +816,7 @@ def _item_wr(series: dict) -> TechItem | None:
             signal=True,
             values=values,
         )
-    if v <= -80:
+    if v >= 80:
         return TechItem(
             name="WR",
             reading="威廉指标偏冷",
@@ -902,6 +904,11 @@ def _item_obv(series: dict) -> TechItem | None:
             values=values,
         )
     if d_close < 0 and d_obv > 0:
+        if len(close) >= 2 and len(obv) >= 2 and float(close[-2]):
+            day_chg = float(close[-1]) / float(close[-2]) - 1
+            day_obv = float(obv[-1]) - float(obv[-2])
+            if day_chg <= -0.03 and day_obv < 0:
+                evidence.append("最近一日大跌且 OBV 当日回落，5 日背离多来自前几日，强度打折")
         return _item(
             "OBV",
             "价格下跌但 OBV 走高，量价背离",
@@ -1090,7 +1097,10 @@ def _quiet_from_series(series: dict, taken: set[str]) -> list[TechItem]:
     items: list[TechItem] = []
     seen: set[str] = set()
     for key, vals in series.items():
-        if key in ("close", "open", "high", "low", "vol", "amount") or key.startswith("MA"):
+        if key in ("close", "open", "high", "low", "vol", "amount"):
+            continue
+        # 只排除 MA5/MA20 这类均线列；MASS 等指标列不能误杀
+        if key.startswith("MA") and key[2:].isdigit():
             continue
         if key.startswith(("MACD_", "KDJ_", "BOLL_", "RSI", "CCI", "WR")):
             continue
@@ -1148,6 +1158,8 @@ def judge_trend(series: dict[str, list[float]]) -> TrendJudgment:
     last = float(close[-1])
     old = float(close[-21])
     change_20 = last / old - 1 if old else 0.0
+    prev = float(close[-2])
+    change_1 = last / prev - 1 if prev else 0.0
     ma5 = series.get("MA5")
     ma20 = series.get("MA20")
     if not ma20 or len(ma20) < 1:
@@ -1160,6 +1172,7 @@ def judge_trend(series: dict[str, list[float]]) -> TrendJudgment:
 
     evidence = [
         f"最近约 20 个交易日{( '涨' if change_20 >= 0 else '跌' )}了 {abs(change_20):.1%}",
+        f"最近一根 K 线{( '涨' if change_1 >= 0 else '跌' )}了 {abs(change_1):.1%}",
         f"现价 {last:.4f}，相对 MA20 {ma20_last:.4f} 在{'上方' if last >= ma20_last else '下方'}",
     ]
     if ma5_last is not None:
@@ -1181,6 +1194,10 @@ def judge_trend(series: dict[str, list[float]]) -> TrendJudgment:
         score += 1
     elif change_20 <= -0.03:
         score -= 1
+    if change_1 >= 0.03:
+        score += 1
+    elif change_1 <= -0.03:
+        score -= 1
     if above:
         score += 1
     else:
@@ -1189,6 +1206,8 @@ def judge_trend(series: dict[str, list[float]]) -> TrendJudgment:
         score += 1
     elif ma_side == "空":
         score -= 1
+    if ma5_last is not None:
+        score += 1 if last > ma5_last else -1
 
     if score >= 2:
         title = "短线偏强。"
@@ -1257,6 +1276,13 @@ def build_guides(series: dict[str, list[float]], trend: TrendJudgment) -> list[G
                 evi2.append("量明显放大，价格变动更值得对照。")
             elif rel <= 0.6:
                 evi2.append("量明显缩小，涨跌可能不牢。")
+            if (
+                rel >= 1.2
+                and len(close) >= 2
+                and close[-2]
+                and close[-1] / close[-2] - 1 <= -0.03
+            ):
+                evi2.append("当日放量下跌，抛压真实，短线别急着接。")
     if close and obv and len(close) >= 6 and len(obv) >= 6:
         d_c = float(close[-1]) - float(close[-6])
         d_o = float(obv[-1]) - float(obv[-6])
@@ -1358,12 +1384,12 @@ def enrich_with_account(
         stance = "指标偏多，但现金很少，更宜观望或只用很少一点试。"
     elif bearish and pnl_pct is not None and pnl_pct < -0.03:
         stance = (
-            "指标偏热。相对你的成本还在亏；现在减会把账面亏损变成实亏。"
+            "指标偏空。相对你的成本还在亏；现在减会把账面亏损变成实亏。"
             "要不要动，取决于你更在意兑现这笔亏损，还是更在意后面可能继续跌。"
         )
     elif bearish and pnl_pct is not None and pnl_pct > 0.03:
         stance = (
-            "指标偏热。相对成本还在赚；现在减是落袋为安，不减则账面盈利还可能吐回去。"
+            "指标偏空。相对成本还在赚；现在减是落袋为安，不减则账面盈利还可能吐回去。"
         )
     elif bearish and cash_known and cash_total < max(1000.0, book_value * 0.05 if book_value else 0):
         stance = stance.rstrip("。") + "。现金也不多；若减仓，先想清楚是为了止亏还是留钱以后再用。"

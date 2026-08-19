@@ -263,6 +263,12 @@ def summarize_intraday(tick_df, auction_df, prev_close: float | None) -> InfoBlo
                 evidence.append("当天相对开盘偏回落。")
             else:
                 evidence.append("当天分时在开盘附近晃。")
+            if high_p > low_p:
+                close_pos = (last_p - low_p) / (high_p - low_p)
+                if close_pos <= 0.15:
+                    evidence.append("收在全天低位附近，尾盘没什么承接。")
+                elif close_pos >= 0.85:
+                    evidence.append("收在全天高位附近。")
     if not ok:
         return InfoBlock(title="今天没有分时", evidence=["分时或竞价暂时没有"], ok=False)
     title = "今天有分时"
@@ -396,6 +402,8 @@ def summarize_etf(
         prem = price / iopv - 1
         word = "溢价" if prem >= 0 else "折价"
         evidence.append(f"现价 {price:.4f}，IOPV {iopv:.4f}，{word} {abs(prem):.1%}")
+        if abs(prem) >= 0.03:
+            evidence.append("折溢价偏大，先核对 IOPV 时点（可能不是收盘值）；折价不等于便宜。")
         title = f"{word} {abs(prem):.1%}"
     elif price is not None:
         evidence.append(f"现价 {price:.4f}，IOPV 暂无")

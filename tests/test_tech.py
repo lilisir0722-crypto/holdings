@@ -78,12 +78,31 @@ def test_kdj_has_plain_language_about():
 
 
 def test_wr_has_plain_language_about():
-    series = {"WR1": [-40.0, -16.5], "close": [1.0, 1.02]}
+    # easy_tdx WR 是 0~100 口径：小于 20 偏热（超买）
+    series = {"WR1": [60.0, 15.0], "close": [1.0, 1.02]}
     report = analyze_indicators(series)
     wr = next(s for s in report.signals if s.name == "WR")
+    assert wr.side == "空"
     assert wr.about
     assert "威廉" in wr.about or "高低" in wr.about
-    assert "-20" in wr.about or "超买" in wr.about
+    assert "20" in wr.about or "超买" in wr.about
+
+
+def test_wr_mid_value_is_not_a_signal():
+    # 0~100 口径下 50 附近是中间值，不能报偏热
+    series = {"WR1": [50.0, 51.5], "close": [1.0, 1.02]}
+    report = analyze_indicators(series)
+    assert "WR" not in [s.name for s in report.signals]
+    wr = next(s for s in report.quiet if s.name == "WR")
+    assert "中间" in wr.reading
+
+
+def test_wr_oversold_is_bullish():
+    series = {"WR1": [70.0, 85.0], "close": [1.0, 0.98]}
+    report = analyze_indicators(series)
+    wr = next(s for s in report.signals if s.name == "WR")
+    assert wr.side == "多"
+    assert "偏冷" in wr.reading
 
 
 def test_bullish_with_no_cash_says_watch():
@@ -120,7 +139,7 @@ def test_bearish_mentions_loss_vs_cost_not_concentration():
         "KDJ_K": [70.0, 81.5],
         "KDJ_D": [68.0, 74.4],
         "KDJ_J": [74.0, 95.8],
-        "WR1": [-40.0, -16.5],
+        "WR1": [60.0, 15.0],
         "close": [1.0, 1.02],
     }
     report = analyze_indicators(series)
@@ -158,6 +177,17 @@ def test_trend_weak_when_below_ma20_and_down():
     series = {"close": closes, "MA5": closes, "MA20": [c + 0.05 for c in closes]}
     trend = judge_trend(series)
     assert "偏弱" in trend.title
+
+
+def test_trend_big_down_day_downgrades_from_strong():
+    # 现价仍在 MA20 上方、MA5 在 MA20 上方，但单日大跌且跌破 MA5：不能再报偏强
+    from holdings.tech import judge_trend
+
+    closes = [1.06] * 20 + [1.127, 1.041]
+    series = {"close": closes, "MA5": [1.0726] * 22, "MA20": [1.0198] * 22}
+    trend = judge_trend(series)
+    assert "偏强" not in trend.title
+    assert any("最近一根 K 线" in e for e in trend.evidence)
 
 
 def test_guides_cover_four_checks():
