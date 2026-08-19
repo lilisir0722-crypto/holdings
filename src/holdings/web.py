@@ -12,6 +12,7 @@ from holdings.judge import judge_all, look_one
 from holdings.market import (
     fetch_all,
     fetch_eastmoney_etf,
+    fetch_fund_gmbd,
     fetch_kline,
     fetch_market_context,
     fetch_one,
@@ -190,6 +191,10 @@ def tech(request: Request, code: str):
                 ctx["etf"] = fetch_eastmoney_etf(code)
             except Exception:
                 ctx["etf"] = {}
+            try:
+                ctx["etf_gmbd"] = fetch_fund_gmbd(code)
+            except Exception:
+                ctx["etf_gmbd"] = None
     except Exception as exc:
         return TEMPLATES.TemplateResponse(
             request,
@@ -282,7 +287,7 @@ def tech(request: Request, code: str):
         "分时数据": report.intraday.evidence if report.intraday else None,
         "除权数据": report.xdxr.evidence if report.xdxr else None,
         "ETF数据": report.etf.evidence if report.etf else None,
-        "海外数据": report.overseas.evidence if report.overseas else None,
+        "外部数据": report.overseas.evidence if report.overseas else None,
         "指标数值": [
             {"指标": s.name, "指标说明": s.about, "数值": s.evidence}
             for s in report.signals

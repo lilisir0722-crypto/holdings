@@ -392,6 +392,7 @@ def summarize_etf(
     *,
     track_60: float | None = None,
     self_60: float | None = None,
+    gmbd: list[dict] | None = None,
 ) -> InfoBlock:
     parsed = parsed or {}
     price = parsed.get("price")
@@ -418,6 +419,20 @@ def summarize_etf(
         evidence.append(f"近 60 日这只 {self_60:.1%}，跟踪指数 {track_60:.1%}，差 {abs(self_60 - track_60):.1%}")
     else:
         evidence.append("跟踪误差暂无")
+    share_rows = [r for r in (gmbd or []) if r.get("shares") not in (None, "", "---")]
+    if share_rows:
+        evidence.append(
+            "份额（亿份）：" + "；".join(f"{r['date']} {r['shares']}" for r in share_rows[:3])
+        )
+        flow = next(
+            (r for r in (gmbd or []) if r.get("subs") not in (None, "", "---")),
+            None,
+        )
+        if flow:
+            evidence.append(
+                f"最近一期（{flow['date']}）申购 {flow['subs']} 亿份、赎回 {flow['redm']} 亿份"
+            )
+        evidence.append("份额趋势向上 = 资金在涌入这只 ETF；拆分折算会让数字跳变，看趋势别看绝对值。")
     ok = bool(evidence and (price is not None or size is not None))
     if not ok:
         return InfoBlock(title="ETF 溢价/规模暂无", evidence=evidence, ok=False)
@@ -495,6 +510,7 @@ def attach_tech_extras(report: TechReport, ctx: dict | None, *, code: str = "") 
             data.get("etf") or {},
             track_60=data.get("track_60"),
             self_60=_pct(self_close, 60),
+            gmbd=data.get("etf_gmbd"),
         )
     else:
         report.etf = None

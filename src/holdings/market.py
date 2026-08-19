@@ -652,6 +652,47 @@ def fetch_eastmoney_etf(code: str) -> dict:
     return parse_eastmoney_etf_quote(raw)
 
 
+def parse_fund_gmbd(html: str) -> list[dict]:
+    """fundf10 规模变动页的表格 → [{date, subs, redm, shares, nav, change}]，最新在前。"""
+    out: list[dict] = []
+    for row in re.findall(r"<tr>(.*?)</tr>", html or "", re.S):
+        cells = [
+            re.sub(r"<[^>]+>", "", c).strip()
+            for c in re.findall(r"<td[^>]*>(.*?)</td>", row, re.S)
+        ]
+        if len(cells) != 6 or not re.match(r"\d{4}-\d{2}-\d{2}", cells[0]):
+            continue
+        out.append(
+            {
+                "date": cells[0],
+                "subs": cells[1],
+                "redm": cells[2],
+                "shares": cells[3],
+                "nav": cells[4],
+                "change": cells[5],
+            }
+        )
+    return out
+
+
+def fetch_fund_gmbd(code: str, timeout: float = 8.0) -> list[dict]:
+    """ETF 份额/规模变动（fundf10）。失败返回空列表，由调用方决定要不要显示。"""
+    url = (
+        "https://fundf10.eastmoney.com/FundArchivesDatas.aspx"
+        f"?type=gmbd&code={code.strip()}&rt=0.12"
+    )
+    req = urllib.request.Request(
+        url,
+        headers={
+            "User-Agent": "Mozilla/5.0",
+            "Referer": "https://fundf10.eastmoney.com/",
+        },
+    )
+    with urllib.request.urlopen(req, timeout=timeout) as resp:
+        raw = resp.read().decode("utf-8", errors="ignore")
+    return parse_fund_gmbd(raw)
+
+
 def fetch_kline(code: str, kind: str = "股票", count: int = 120, client=None):
     """Daily kline for tech analysis. Returns DataFrame or None."""
     code = code.strip()

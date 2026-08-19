@@ -201,3 +201,22 @@ def test_summarize_etf_large_discount_warns_iopv():
     blob = "".join(block.evidence)
     assert "折价" in blob
     assert "核对 IOPV" in blob
+
+
+def test_summarize_etf_gmbd_shares():
+    parsed = {"price": 1.041, "iopv": 1.087, "size": 8.881e9}
+    gmbd = [
+        {"date": "2026-07-03", "subs": "---", "redm": "---", "shares": "69.47", "nav": "---", "change": "---"},
+        {"date": "2026-06-30", "subs": "25.94", "redm": "20.25", "shares": "20.10", "nav": "83.19", "change": "235.83%"},
+    ]
+    block = summarize_etf(parsed, gmbd=gmbd)
+    blob = "".join(block.evidence)
+    assert "69.47" in blob and "20.10" in blob
+    assert "申购 25.94" in blob and "赎回 20.25" in blob
+    assert "涌入" in blob
+
+
+def test_summarize_etf_without_gmbd_unchanged():
+    parsed = {"price": 1.041, "iopv": 1.087, "size": 8.881e9}
+    block = summarize_etf(parsed)
+    assert all("份额" not in e for e in block.evidence)

@@ -104,3 +104,22 @@ def test_parse_fund_holdings_table():
     names, asof = parse_fund_holdings(html)
     assert asof == "2026-06-30"
     assert names[:2] == ["中微公司", "北方华创"]
+
+
+def test_parse_fund_gmbd():
+    from holdings.market import parse_fund_gmbd
+
+    html = """
+    <table><thead><tr><th>日期</th></tr></thead><tbody>
+    <tr><td>2026-07-03</td><td class='tor'>---</td><td class='tor'>---</td><td class='tor'>69.47</td><td class='tor'>---</td><td class='tor'>---</td></tr>
+    <tr><td>2026-06-30</td><td class='tor'>25.94</td><td class='tor'>20.25</td><td class='tor'>20.10</td><td class='tor'>83.19</td><td class='tor'>235.83%</td></tr>
+    </tbody></table>
+    """
+    rows = parse_fund_gmbd(html)
+    assert len(rows) == 2
+    assert rows[0]["date"] == "2026-07-03"
+    assert rows[0]["shares"] == "69.47"
+    assert rows[1]["subs"] == "25.94"
+    assert rows[1]["redm"] == "20.25"
+    assert parse_fund_gmbd("") == []
+    assert parse_fund_gmbd("no table here") == []
