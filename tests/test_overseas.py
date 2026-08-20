@@ -247,14 +247,33 @@ def test_cached_fresh_fetch_writes_cache(tmp_cache, monkeypatch):
 
 def test_cached_empty_triggers_retry(tmp_cache, monkeypatch):
     calls = {"n": 0}
+    waits: list[float] = []
+    monkeypatch.setattr(overseas.time, "sleep", lambda s: waits.append(s))
 
     def flaky(timeout=8.0, pack=None):
         calls["n"] += 1
-        return {} if calls["n"] == 1 else {"100.NDX": {"name": "纳斯达克", "price": 1.0, "change_pct": 0.1, "ts": None}}
+        return {} if calls["n"] < 3 else {"100.NDX": {"name": "纳斯达克", "price": 1.0, "change_pct": 0.1, "ts": None}}
 
     monkeypatch.setattr(overseas, "fetch_overseas", flaky)
     quotes, _at, fresh = fetch_overseas_cached()
-    assert calls["n"] == 2 and fresh and "100.NDX" in quotes
+    assert calls["n"] == 3 and fresh and "100.NDX" in quotes
+    assert waits == [1.5, 3.0]  # 第三次才成功，退避 1.5 → 3
+
+
+def test_cached_backoff_three_retries_then_give_up(tmp_cache, monkeypatch):
+    waits: list[float] = []
+    monkeypatch.setattr(overseas.time, "sleep", lambda s: waits.append(s))
+    calls = {"n": 0}
+
+    def empty(timeout=8.0, pack=None):
+        calls["n"] += 1
+        return {}
+
+    monkeypatch.setattr(overseas, "fetch_overseas", empty)
+    quotes, _at, fresh = fetch_overseas_cached(pack="机器人")
+    assert quotes is None and not fresh
+    assert calls["n"] == 4  # 首次 + 3 次重试
+    assert waits == [1.5, 3.0, 6.0]
 
 
 def test_cached_total_failure_falls_back_to_stale(tmp_cache, monkeypatch):

@@ -20,6 +20,8 @@ log = get_logger("overseas")
 CACHE_DIR = Path(__file__).resolve().parent.parent.parent / "data" / "cache"
 CACHE_TTL = 120.0  # 秒内同一包不重复拉取（连刷不重复打请求，也少触发限流）
 CACHE_STALE_OK = 24 * 3600.0  # 兜底缓存超过一天就不用了
+RETRY_TIMES = 3  # 首次失败后再试几次
+BACKOFF_BASE = 1.5  # 指数退避起点：1.5s、3s、6s
 
 # 通用宏观层：所有持仓都带。(secid, 分组)；名称以接口返回的 f14 为准
 COMMON_WATCHLIST: tuple[tuple[str, str], ...] = (
@@ -245,7 +247,7 @@ def fetch_overseas_cached(
     """带避让的拉取。返回 (quotes, 数据时间戳, 是否本次新拉)。
 
     - TTL 内直接用缓存，不打请求；
-    - 失败/为空时隔 1.5s 重试一次；
+    - 失败/为空时指数退避重试 RETRY_TIMES 次（1.5s、3s、6s）；
     - 还失败就回退到 24h 内的旧缓存（fresh=False，由调用方决定是否提示）。
     """
     now = time.time()
@@ -254,8 +256,12 @@ def fetch_overseas_cached(
         return cached[1], cached[0], False
 
     quotes = _try_fetch(pack, timeout)
-    if quotes is None:
-        time.sleep(1.5)
+    for i in range(RETRY_TIMES):
+        if quotes is not None:
+            break
+        wait = BACKOFF_BASE * (2 ** i)
+        log.info("外部参照第 %d 次重试，先等 %.1fs（包=%s）", i + 1, wait, pack or "无")
+        time.sleep(wait)
         quotes = _try_fetch(pack, timeout)
     if quotes:
         _write_cache(pack, quotes)
