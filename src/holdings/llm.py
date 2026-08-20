@@ -2,10 +2,15 @@ from __future__ import annotations
 
 import json
 import os
+import time
 import urllib.error
 import urllib.request
 from collections import OrderedDict
 from typing import Any
+
+from holdings.log import get_logger
+
+log = get_logger("llm")
 
 _CACHE: OrderedDict[tuple, tuple[str, str]] = OrderedDict()
 _CACHE_MAX = 64
@@ -74,6 +79,7 @@ def explain_tech(payload: dict[str, Any]) -> tuple[str | None, str]:
         },
         method="POST",
     )
+    t0 = time.monotonic()
     try:
         with urllib.request.urlopen(req, timeout=30) as resp:
             raw = json.loads(resp.read().decode("utf-8"))
@@ -84,11 +90,24 @@ def explain_tech(payload: dict[str, Any]) -> tuple[str | None, str]:
             .strip()
         )
         if not text:
+            log.warning("DeepSeek 返回空（耗时 %.1fs）", time.monotonic() - t0)
             return None, "error"
         _CACHE[key] = (text, "ok")
         _CACHE.move_to_end(key)
         while len(_CACHE) > _CACHE_MAX:
             _CACHE.popitem(last=False)
+        log.info(
+            "说明生成成功（%s，%d 字，耗时 %.1fs）",
+            payload.get("代码") or "?",
+            len(text),
+            time.monotonic() - t0,
+        )
         return text, "ok"
     except (urllib.error.URLError, urllib.error.HTTPError, TimeoutError, json.JSONDecodeError, KeyError, IndexError) as exc:
+        log.warning(
+            "DeepSeek 调用失败（%s，耗时 %.1fs）：%s",
+            payload.get("代码") or "?",
+            time.monotonic() - t0,
+            exc,
+        )
         return f"模型没写出来：{exc}", "error"

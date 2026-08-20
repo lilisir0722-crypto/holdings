@@ -10,7 +10,10 @@ import json
 import urllib.request
 from datetime import datetime
 
+from holdings.log import get_logger
 from holdings.tech import InfoBlock
+
+log = get_logger("overseas")
 
 # 通用宏观层：所有持仓都带。(secid, 分组)；名称以接口返回的 f14 为准
 COMMON_WATCHLIST: tuple[tuple[str, str], ...] = (
@@ -162,7 +165,8 @@ def fetch_futures(timeout: float = 8.0) -> dict[str, dict]:
         code = secid.replace(".", "_")
         try:
             raw = _get_json(f"https://futsseapi.eastmoney.com/static/{code}_qt", timeout)
-        except Exception:
+        except Exception as exc:
+            log.info("期货 %s 拉取失败：%s", secid, exc)
             continue
         q = parse_futures_payload(raw, name)
         if q:
@@ -283,7 +287,8 @@ def attach_overseas(
     pack = pick_pack(name, boards)
     try:
         quotes = fetch_overseas(timeout=timeout, pack=pack)
-    except Exception:
+    except Exception as exc:
+        log.warning("外部参照拉取失败（%s，包=%s）：%s", name, pack or "无", exc)
         quotes = None
     report.overseas = summarize_overseas(quotes, pack=pack)
     return report

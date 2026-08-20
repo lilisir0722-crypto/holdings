@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import time
 import webbrowser
 from pathlib import Path
 
@@ -32,11 +33,13 @@ from holdings.tech import (
 from holdings.tech_extra import attach_tech_extras, is_listed_etf
 from holdings.overseas import attach_overseas
 from holdings.journal import load_journal, record_snapshot
+from holdings.log import get_logger
 from holdings.plan import build_plan
 
 DATA = Path.cwd() / "data" / "holdings.json"
 TEMPLATES = Jinja2Templates(directory=str(Path(__file__).resolve().parent / "templates"))
 
+log = get_logger("web")
 store = Store(DATA)
 app = FastAPI(title="持仓")
 
@@ -173,30 +176,36 @@ def tech(request: Request, code: str):
     name = (hit.quote or {}).get("name") or hit.name or code
 
     ctx: dict | None = None
+    t0 = time.monotonic()
     try:
         with open_mac_client() as client:
             kdf = fetch_kline(code, hit.kind, client=client)
             try:
                 ctx = fetch_market_context(client, code)
-            except Exception:
+            except Exception as exc:
+                log.warning("技术页 %s 市场上下文拉取失败：%s", code, exc)
                 ctx = {"capital_df": None, "belong_df": None, "board_summaries": {}, "unusual_df": None}
         if ctx is None:
             ctx = {}
         ctx["daily_df"] = kdf
         try:
             ctx["xdxr_df"] = fetch_xdxr(code)
-        except Exception:
+        except Exception as exc:
+            log.info("技术页 %s 除权数据拉取失败：%s", code, exc)
             ctx["xdxr_df"] = None
         if is_listed_etf(code):
             try:
                 ctx["etf"] = fetch_eastmoney_etf(code)
-            except Exception:
+            except Exception as exc:
+                log.info("技术页 %s ETF 数据拉取失败：%s", code, exc)
                 ctx["etf"] = {}
             try:
                 ctx["etf_gmbd"] = fetch_fund_gmbd(code)
-            except Exception:
+            except Exception as exc:
+                log.info("技术页 %s 份额变动拉取失败：%s", code, exc)
                 ctx["etf_gmbd"] = None
     except Exception as exc:
+        log.warning("技术页 %s 行情拉取失败：%s", code, exc)
         return TEMPLATES.TemplateResponse(
             request,
             "tech.html",
@@ -238,6 +247,7 @@ def tech(request: Request, code: str):
     try:
         report = analyze_kline(kdf)
     except Exception as exc:
+        log.warning("技术页 %s 指标计算失败：%s", code, exc)
         return TEMPLATES.TemplateResponse(
             request,
             "tech.html",
@@ -361,8 +371,14 @@ def tech(request: Request, code: str):
             confirm=plan.confirm if plan.has else "",
             payload=payload,
         )
-    except Exception:
-        pass
+    except Exception as exc:
+        log.warning("技术页 %s 快照写入失败：%s", code, exc)
+    log.info(
+        "技术页 %s 完成（耗时 %.1fs，说明状态 %s）",
+        code,
+        time.monotonic() - t0,
+        status,
+    )
     return TEMPLATES.TemplateResponse(
         request,
         "tech.html",
