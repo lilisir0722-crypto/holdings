@@ -21,7 +21,7 @@ from holdings.market import (
     to_snapshot,
 )
 from holdings.overseas import attach_overseas
-from holdings.plan import PlanView, build_plan
+from holdings.plan import PlanView, build_plan, build_tomorrow
 from holdings.store import Holding, Store
 from holdings.tech import (
     TechReport,
@@ -234,6 +234,8 @@ def run_tech(
     )
     run.plan = plan
     run.report = report
+    if plan and plan.has:
+        plan.tomorrow = build_tomorrow(plan, overseas=report.overseas)
     if mode == "full":
         from holdings.llm import explain_tech
 
@@ -283,6 +285,7 @@ def persist_run(run: TechRun, hit: Holding, *, source: str = "page") -> bool:
             if plan and plan.has
             else [],
             confirm=plan.confirm if plan and plan.has else "",
+            tomorrow=plan.tomorrow.title if plan and plan.tomorrow else "",
             payload=run.payload,
             source=source,
         )

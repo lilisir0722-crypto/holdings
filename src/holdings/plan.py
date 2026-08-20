@@ -16,6 +16,15 @@ class PlanScenario:
 
 
 @dataclass
+class TomorrowView:
+    title: str = ""
+    open_bias: str = ""
+    band: str = ""
+    watches: list[str] = field(default_factory=list)
+    note: str = "把预案收成明天要用的几条：默认动作、竞价偏向、关注区间。不是点位预测，也不能保证开盘方向。"
+
+
+@dataclass
 class PlanView:
     has: bool = False
     price: float = 0.0
@@ -24,6 +33,7 @@ class PlanView:
     confirm: str = ""
     principles: list[str] = field(default_factory=list)
     scenarios: list[PlanScenario] = field(default_factory=list)
+    tomorrow: TomorrowView | None = None
     note: str = (
         "点位由规则根据现价、均线和近期底部拼的，随每天数据刷新；"
         "是预案不是保证，盘中对号入座就行。"
@@ -187,4 +197,50 @@ def build_plan(
         scenarios.append(
             PlanScenario(f"在 {d1.level:.3f} 与 MA5 之间横盘", "观望，现金留着")
         )
+    out.tomorrow = build_tomorrow(out)
+    return out
+
+
+def _open_bias(overseas) -> str:
+    if overseas is None or not getattr(overseas, "ok", False):
+        return "竞价方向看今晚外盘，现在还没数。"
+    blob = (getattr(overseas, "title", "") or "") + "".join(
+        getattr(overseas, "evidence", None) or []
+    )
+    if "承压" in blob or "低开" in blob:
+        return "外盘偏空，明天竞价先按承压准备。"
+    if "有支撑" in blob or "高开" in blob:
+        return "外盘偏多，明天竞价先按有情绪准备。"
+    if "安静" in blob or "幅度一般" in blob:
+        return "外盘不算剧烈，明天竞价别对外盘预期太高。"
+    return "外盘有数，但没有一边倒的信号。"
+
+
+def build_tomorrow(plan: PlanView, overseas=None) -> TomorrowView:
+    """把预案收成明天的默认动作。overseas 有就补竞价偏向。"""
+    out = TomorrowView()
+    if not plan.has:
+        return out
+    blob = "".join(plan.principles)
+    ma5 = plan.ma5
+    d1 = plan.defenses[0] if plan.defenses else None
+    if "不是加仓日" in blob:
+        out.title = "明日默认观望，不是加仓日。"
+    elif ma5 and plan.price >= ma5 * 0.998:
+        out.title = f"明日默认防守：先看能不能守住 MA5（{ma5:.3f}）。"
+    elif d1:
+        ma5_s = f"{ma5:.3f}" if ma5 else "MA5"
+        out.title = (
+            f"明日默认观望；收到 {d1.level:.3f}（{d1.label}）一带缩量，"
+            f"或收复 MA5（{ma5_s}），再谈动手。"
+        )
+    else:
+        out.title = "明日默认观望。"
+    out.open_bias = _open_bias(overseas)
+    if d1 and ma5:
+        lo, hi = (d1.level, ma5) if d1.level <= ma5 else (ma5, d1.level)
+        out.band = f"明天先看 {lo:.3f}–{hi:.3f}（防线到 MA5），出了这段才重新定性。"
+    elif d1:
+        out.band = f"明天先看首道防线 {d1.level:.3f}（{d1.label}）是否守得住。"
+    out.watches = [f"{s.case} → {s.action}" for s in plan.scenarios[:3]]
     return out

@@ -170,6 +170,19 @@
         </section>
         {% endif %}
 
+        {% if plan and plan.tomorrow and plan.tomorrow.title %}
+        <section class="lede">
+          <h4>明日</h4>
+          <p><strong>{{ plan.tomorrow.title }}</strong></p>
+          <ul class="evidence">
+            {% if plan.tomorrow.open_bias %}<li>{{ plan.tomorrow.open_bias }}</li>{% endif %}
+            {% if plan.tomorrow.band %}<li>{{ plan.tomorrow.band }}</li>{% endif %}
+            {% for w in plan.tomorrow.watches %}<li>{{ w }}</li>{% endfor %}
+          </ul>
+          <p class="meta">{{ plan.tomorrow.note }}</p>
+        </section>
+        {% endif %}
+
         {% if plan and plan.has %}
         <section class="tech-group">
           <h4>预案</h4>

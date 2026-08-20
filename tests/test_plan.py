@@ -1,6 +1,7 @@
 import pandas as pd
 
-from holdings.plan import build_plan
+from holdings.plan import build_plan, build_tomorrow
+from holdings.tech import InfoBlock
 
 
 def _df(closes, vols=None, ma5=None, ma20=None, ma60=None):
@@ -137,3 +138,30 @@ def test_ma_computed_from_close_when_columns_missing():
     ma20 = next(d for d in plan.defenses if d.label == "MA20")
     assert abs(ma20.level - 1.025) < 1e-3
     assert "上方" in plan.confirm  # 现价 1.10 == MA5
+
+
+def test_tomorrow_heavy_drop_is_not_add_day():
+    closes = [1.10] * 29 + [1.017]
+    vols = [100.0] * 29 + [160.0]
+    plan = build_plan(
+        _df(closes, vols=vols, ma5=1.07, ma20=1.00, ma60=0.95),
+        [_fx(0.99, "2026-08-14")],
+    )
+    assert plan.tomorrow
+    assert "不是加仓日" in plan.tomorrow.title
+    assert "1.000" in plan.tomorrow.band and "1.070" in plan.tomorrow.band
+
+
+def test_tomorrow_above_ma5_is_defend():
+    plan = build_plan(_df([1.08] * 30, ma5=1.06, ma20=0.98, ma60=0.9), [_fx(0.96, "2026-08-14")])
+    assert "守住 MA5" in plan.tomorrow.title
+
+
+def test_tomorrow_open_bias_from_overseas():
+    plan = build_plan(_df([1.04] * 30, ma5=1.07, ma20=1.02, ma60=0.9), [_fx(1.027, "2026-08-14")])
+    down = InfoBlock(title="费半 -3.2%", evidence=["费半跌幅不小，明天 A 股半导体竞价多半承压。"], ok=True)
+    tm = build_tomorrow(plan, overseas=down)
+    assert "承压" in tm.open_bias
+    quiet = InfoBlock(title="费半 +0.2%", evidence=["费半波动不大，外盘今晚算安静。"], ok=True)
+    assert "别对外盘预期太高" in build_tomorrow(plan, overseas=quiet).open_bias
+    assert "再谈动手" in plan.tomorrow.title  # 现价在 MA5 下、防线之上 → 观望

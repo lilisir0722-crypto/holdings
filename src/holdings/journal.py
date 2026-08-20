@@ -30,6 +30,7 @@ def record_snapshot(
     overseas_title: str = "",
     defenses: list[dict] | None = None,
     confirm: str = "",
+    tomorrow: str = "",
     payload: dict | None = None,
     source: str = "page",
 ) -> bool:
@@ -55,6 +56,7 @@ def record_snapshot(
         "overseas": overseas_title,
         "defenses": defenses or [],
         "confirm": confirm,
+        "tomorrow": tomorrow,
         "payload": payload or {},
         "source": source,
     }

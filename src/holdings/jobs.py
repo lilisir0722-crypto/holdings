@@ -66,6 +66,12 @@ def _plan_lines(run) -> list[str]:
     if plan and plan.has:
         defs = " → ".join(f"{d.level:.3f}（{d.label}）" for d in plan.defenses)
         lines.append(f"防守：{defs}")
+        if plan.tomorrow and plan.tomorrow.title:
+            lines.append(f"**{plan.tomorrow.title}**")
+            if plan.tomorrow.open_bias:
+                lines.append(plan.tomorrow.open_bias)
+            if plan.tomorrow.band:
+                lines.append(plan.tomorrow.band)
         if plan.confirm:
             lines.append(plan.confirm)
         for p in plan.principles[:3]:

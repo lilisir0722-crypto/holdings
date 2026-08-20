@@ -127,6 +127,7 @@
       {% if r.defenses %}
       <p class="snap-line">防守位：{% for d in r.defenses %}{{ d.level }}（{{ d.label }}）{% if not loop.last %} → {% endif %}{% endfor %}</p>
       {% endif %}
+      {% if r.tomorrow %}<p class="snap-line">明日：{{ r.tomorrow }}</p>{% endif %}
       {% if r.confirm %}<p class="snap-line">右侧确认：{{ r.confirm }}</p>{% endif %}
       {% if r.later %}
       <p class="snap-later">
