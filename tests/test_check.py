@@ -97,6 +97,8 @@ def test_no_plan_and_bad_input():
     assert out.verdict == "没法对照"
     bad = check_trade(side="买", price=0, qty=1000, plan=_plan())
     assert bad.verdict == "没法对照"
+    alias = check_trade(side="buy", price=1.03, qty=5000, plan=_plan())
+    assert alias.side == "买" and alias.verdict == "不符合"
 
 
 def test_buy_against_last_watch_snapshot():

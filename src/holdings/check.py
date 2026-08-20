@@ -9,6 +9,7 @@ from dataclasses import dataclass, field
 
 from holdings.plan import PlanView
 
+_SIDES = {"买": "买", "卖": "卖", "buy": "买", "sell": "卖"}
 # 防线一带：落在 d1–d2 闭区间内（含两端 0.15% 容差），不是「靠近 d1 上方」
 _BAND = 0.0015
 
@@ -88,7 +89,7 @@ def check_trade(
     cost: float | None = None,
     journals: list[dict] | None = None,
 ) -> CheckView:
-    side = (side or "").strip()
+    side = _SIDES.get((side or "").strip(), "")
     try:
         price_f = float(price)
         qty_f = float(qty)
