@@ -54,10 +54,13 @@
     <h2>{{ name }} 的分析快照</h2>
     <p class="meta">每次打开技术页记一条（连续刷新不重复记），最新在前，共 {{ records|length }} 条。复盘用：对照后来的走势，看当时的依据和预案靠不靠谱。</p>
 
-    {% if summary %}
+    {% if summary_rules or summary_notes %}
+    <p class="meta" style="margin-top:16px">规则（上方那套）和说明（DeepSeek）分开计分。口径一样：偏多后涨超 1%、偏空后跌超 1%、观望后振幅不超 2%。样本少时别当真。</p>
+    {% if summary_rules %}
+    <p class="meta">规则</p>
     <table class="sum-table">
-      <tr><th>当时的倾向</th><th>条数</th><th>5 个交易日后平均</th><th>说中</th><th>10 个交易日后平均</th><th>说中</th></tr>
-      {% for row in summary %}
+      <tr><th>倾向</th><th>条数</th><th>5 日后平均</th><th>说中</th><th>10 日后平均</th><th>说中</th></tr>
+      {% for row in summary_rules %}
       <tr>
         <td>{{ row.bucket }}</td>
         <td>{{ row.n5 or row.n10 }}</td>
@@ -68,7 +71,40 @@
       </tr>
       {% endfor %}
     </table>
-    <p class="meta">「说中」口径：偏多后涨超 1%、偏空后跌超 1%、观望后振幅不超 2%。样本少时别当真，攒几十条再看。</p>
+    {% endif %}
+    {% if summary_notes %}
+    <p class="meta">说明</p>
+    <table class="sum-table">
+      <tr><th>倾向</th><th>条数</th><th>5 日后平均</th><th>说中</th><th>10 日后平均</th><th>说中</th></tr>
+      {% for row in summary_notes %}
+      <tr>
+        <td>{{ row.bucket }}</td>
+        <td>{{ row.n5 or row.n10 }}</td>
+        <td>{% if row.n5 %}{{ "%+.2f%%"|format(row.avg5) }}{% else %}—{% endif %}</td>
+        <td>{{ row.hit5 or "—" }}</td>
+        <td>{% if row.n10 %}{{ "%+.2f%%"|format(row.avg10) }}{% else %}—{% endif %}</td>
+        <td>{{ row.hit10 or "—" }}</td>
+      </tr>
+      {% endfor %}
+    </table>
+    {% endif %}
+    {% endif %}
+
+    {% if checks %}
+    <h2 style="font-size:18px;margin:28px 0 8px">纪律对照</h2>
+    <p class="meta">操作前检查留下的记录。听了 = 按结论做；没听 = 对着干还是下了。</p>
+    {% for c in checks %}
+    <section class="snap">
+      <div class="snap-head">
+        <span class="ts">{{ c.ts }}</span>
+        <span class="px">{{ c.side }} {{ c.price }} × {{ c.qty }} · {{ c.verdict }}</span>
+      </div>
+      <p class="snap-line">{{ c.title }}</p>
+      {% if c.followed == true %}<p class="snap-later">听了</p>
+      {% elif c.followed == false %}<p class="snap-stance">没听，还是下了</p>
+      {% else %}<p class="snap-line">还没标记听没听</p>{% endif %}
+    </section>
+    {% endfor %}
     {% endif %}
 
     {% if not records %}
@@ -84,7 +120,8 @@
           {% if r.cost %}· 成本 {{ "%.4f"|format(r.cost) }}{% endif %}
         </span>
       </div>
-      {% if r.stance %}<p class="snap-stance">{{ r.stance }}</p>{% endif %}
+      {% if r.stance %}<p class="snap-stance">规则：{{ r.stance }}{% if r.rule_bucket %}（{{ r.rule_bucket }}）{% endif %}</p>{% endif %}
+      {% if r.note_bucket %}<p class="snap-line">说明倾向：{{ r.note_bucket }}{% if r.rule_bucket and r.note_bucket != r.rule_bucket %} · 和规则不一致{% endif %}</p>{% endif %}
       {% if r.trend %}<p class="snap-line">走势：{{ r.trend }}</p>{% endif %}
       {% if r.overseas %}<p class="snap-line">外部：{{ r.overseas }}</p>{% endif %}
       {% if r.defenses %}

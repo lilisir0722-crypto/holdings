@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-import time
 import webbrowser
 from datetime import datetime, timezone
 from pathlib import Path
@@ -14,34 +13,27 @@ from fastapi.templating import Jinja2Templates
 from holdings.judge import judge_all, look_one
 from holdings.market import (
     fetch_all,
-    fetch_eastmoney_etf,
-    fetch_fund_gmbd,
     fetch_kline,
-    fetch_market_context,
     fetch_one,
-    fetch_xdxr,
     open_mac_client,
     to_market_snapshot,
     to_snapshot,
 )
 from holdings.store import CashBook, Holding, Store
-from holdings.tech import (
-    TechReport,
-    analyze_chanlun,
-    analyze_kline,
-    attach_market_context,
-    enrich_with_account,
-)
-from holdings.tech_extra import attach_tech_extras, is_listed_etf
-from holdings.overseas import attach_overseas
+from holdings.tech import analyze_chanlun
 from holdings.check import check_trade
 from holdings.journal import (
-    backfill_outcomes,
+    load_checks,
     load_journal,
-    record_snapshot,
-    summarize_outcomes,
+    mark_followed,
+    note_bucket,
+    record_check,
+    stance_bucket,
+    summarize_split,
 )
+from holdings.jobs import job_close, job_open
 from holdings.log import get_logger
+from holdings.pipeline import persist_run, run_tech
 from holdings.plan import build_plan
 
 DATA = Path.cwd() / "data" / "holdings.json"
@@ -196,232 +188,32 @@ def tech(request: Request, code: str):
             {"error": "这只不在你已经填进来的持仓里。", "code": code, "name": code, "kind": "", "price": None, "report": None},
             status_code=404,
         )
-    price = None
-    if hit.quote and hit.quote.get("price") is not None:
-        price = hit.quote["price"]
-    name = (hit.quote or {}).get("name") or hit.name or code
-
-    ctx: dict | None = None
-    t0 = time.monotonic()
-    try:
-        with open_mac_client() as client:
-            kdf = fetch_kline(code, hit.kind, client=client)
-            try:
-                ctx = fetch_market_context(client, code)
-            except Exception as exc:
-                log.warning("技术页 %s 市场上下文拉取失败：%s", code, exc)
-                ctx = {"capital_df": None, "belong_df": None, "board_summaries": {}, "unusual_df": None}
-        if ctx is None:
-            ctx = {}
-        ctx["daily_df"] = kdf
-        try:
-            ctx["xdxr_df"] = fetch_xdxr(code)
-        except Exception as exc:
-            log.info("技术页 %s 除权数据拉取失败：%s", code, exc)
-            ctx["xdxr_df"] = None
-        if is_listed_etf(code):
-            try:
-                ctx["etf"] = fetch_eastmoney_etf(code)
-            except Exception as exc:
-                log.info("技术页 %s ETF 数据拉取失败：%s", code, exc)
-                ctx["etf"] = {}
-            try:
-                ctx["etf_gmbd"] = fetch_fund_gmbd(code)
-            except Exception as exc:
-                log.info("技术页 %s 份额变动拉取失败：%s", code, exc)
-                ctx["etf_gmbd"] = None
-    except Exception as exc:
-        log.warning("技术页 %s 行情拉取失败：%s", code, exc)
+    run = run_tech(store, hit, holdings, mode="full")
+    if run.error and run.report is None:
         return TEMPLATES.TemplateResponse(
             request,
             "tech.html",
             {
-                "error": f"行情连不上：{exc}",
+                "error": run.error,
                 "code": code,
-                "name": name,
+                "name": run.name,
                 "kind": hit.kind,
-                "price": price,
+                "price": run.price,
                 "report": None,
             },
         )
-    if kdf is None or getattr(kdf, "empty", True):
-        empty = TechReport(
-            stance="这只没有够用的日 K，算不了技术指标。",
-            stance_evidence=["日 K 为空或场外基金走净值，没有交易所日 K"],
-            signals=[],
-            quiet=[],
-        )
-        empty = attach_market_context(empty, ctx, code=code)
-        empty = attach_tech_extras(empty, ctx, code=code)
-        empty = attach_overseas(
-            empty, name=name, boards=list((ctx.get("board_names") or {}).values())
-        )
-        empty.chanlun = analyze_chanlun(None, code)
-        return TEMPLATES.TemplateResponse(
-            request,
-            "tech.html",
-            {
-                "error": None,
-                "code": code,
-                "name": name,
-                "kind": hit.kind,
-                "price": price,
-                "report": empty,
-                "plan": None,
-            },
-        )
-    try:
-        report = analyze_kline(kdf)
-    except Exception as exc:
-        log.warning("技术页 %s 指标计算失败：%s", code, exc)
-        return TEMPLATES.TemplateResponse(
-            request,
-            "tech.html",
-            {
-                "error": f"指标算不出来：{exc}",
-                "code": code,
-                "name": name,
-                "kind": hit.kind,
-                "price": price,
-                "report": None,
-            },
-        )
-    cash = store.load_cash()
-    snaps = [to_snapshot(h, h.quote) for h in holdings]
-    book = sum((s.quantity * s.price) for s in snaps if s.price is not None)
-    pos_v = (hit.quantity * price) if price is not None else 0.0
-    report = enrich_with_account(
-        report,
-        cash_total=cash.total,
-        cash_known=cash.known,
-        position_value=pos_v,
-        book_value=book,
-        cost=hit.cost,
-        price=price,
-    )
-    report = attach_market_context(report, ctx, code=code)
-    report = attach_tech_extras(report, ctx, code=code)
-    report = attach_overseas(
-        report, name=name, boards=list((ctx.get("board_names") or {}).values())
-    )
-    report.chanlun = analyze_chanlun(kdf, code)
-    plan = build_plan(
-        kdf,
-        report.chanlun.fractals if report.chanlun and report.chanlun.ok else None,
-        cost=hit.cost,
-        cash_total=cash.total if cash.known else None,
-        book_value=book,
-    )
-    from holdings.llm import explain_tech
-
-    # payload 只装数据和事实（数值、涨跌幅、点位、算法测量结果），不装规则结论：
-    # 说明区要做独立于规则判断的"第二双眼睛"，而不是复述上方结论。
-    payload = {
-        "名称": name,
-        "代码": code,
-        "现价": price,
-        "成本": hit.cost,
-        "走势数据": report.trend_evidence,
-        "对照数据": [{"方法": g.title, "数据": g.evidence} for g in report.guides],
-        "多周期数据": report.timeframes.evidence if report.timeframes else None,
-        "相对强弱数据": report.relative.evidence if report.relative else None,
-        "分时数据": report.intraday.evidence if report.intraday else None,
-        "除权数据": report.xdxr.evidence if report.xdxr else None,
-        "ETF数据": report.etf.evidence if report.etf else None,
-        "外部数据": report.overseas.evidence if report.overseas else None,
-        "指标数值": [
-            {"指标": s.name, "指标说明": s.about, "数值": s.evidence}
-            for s in report.signals
-        ],
-        "无信号指标数值": [
-            {"指标": s.name, "指标说明": s.about, "数值": s.evidence}
-            for s in report.quiet
-        ],
-        "可用现金": cash.total if cash.known else None,
-    }
-    market_quote = store.load_market()
-    if market_quote:
-        payload["大盘数据"] = {
-            "名称": market_quote.get("name") or "沪深300",
-            "现价": market_quote.get("price"),
-            "今日涨跌幅": market_quote.get("day_change_pct"),
-            "近20日涨跌幅": market_quote.get("change_20d_pct"),
-        }
-    if report.capital:
-        payload["资金数据"] = [report.capital.title, *report.capital.evidence]
-    if report.boards:
-        payload["板块数据"] = [
-            {"板块": b.title, "数据": b.evidence} for b in report.boards
-        ]
-    if report.unusual:
-        payload["异动数据"] = [report.unusual.title, *report.unusual.evidence[:20]]
-    if report.chanlun:
-        payload["缠论数据"] = {
-            "统计": report.chanlun.counts,
-            "买卖点": report.chanlun.mmds[-8:] if report.chanlun.mmds else [],
-            "中枢": [
-                {
-                    "上沿": z.get("zg"),
-                    "下沿": z.get("zd"),
-                    "起": z.get("start_date"),
-                    "止": z.get("end_date"),
-                }
-                for z in (report.chanlun.zss or [])[-3:]
-                if isinstance(z, dict)
-            ],
-            "背驰": [
-                {"类型": b.get("type"), "日期": b.get("curr_date"), "说明": b.get("msg")}
-                for b in (report.chanlun.bcs or [])[-4:]
-                if isinstance(b, dict)
-            ],
-        }
-    if plan.has:
-        payload["关键点位"] = [f"{d.level}（{d.label}）" for d in plan.defenses]
-    note, status = explain_tech(payload)
-    report.model_note = note
-    report.model_status = status
-    try:
-        record_snapshot(
-            code,
-            name=name,
-            price=price,
-            cost=hit.cost,
-            stance=report.stance,
-            trend=report.trend_title,
-            note=note,
-            note_status=status,
-            overseas_title=report.overseas.title if report.overseas else "",
-            defenses=[{"level": d.level, "label": d.label} for d in plan.defenses]
-            if plan.has
-            else [],
-            confirm=plan.confirm if plan.has else "",
-            payload=payload,
-        )
-    except Exception as exc:
-        log.warning("技术页 %s 快照写入失败：%s", code, exc)
-    try:
-        backfilled = backfill_outcomes(code, kdf)
-        if backfilled:
-            log.info("技术页 %s 回填事后数据 %d 条", code, backfilled)
-    except Exception as exc:
-        log.warning("技术页 %s 事后回填失败：%s", code, exc)
-    log.info(
-        "技术页 %s 完成（耗时 %.1fs，说明状态 %s）",
-        code,
-        time.monotonic() - t0,
-        status,
-    )
+    persist_run(run, hit, source="page")
     return TEMPLATES.TemplateResponse(
         request,
         "tech.html",
         {
             "error": None,
             "code": code,
-            "name": name,
+            "name": run.name,
             "kind": hit.kind,
-            "price": price,
-            "report": report,
-            "plan": plan,
+            "price": run.price,
+            "report": run.report,
+            "plan": run.plan,
         },
     )
 
@@ -475,6 +267,16 @@ def check(
             cost=hit.cost,
             journals=load_journal(code, limit=5),
         )
+        check_id = record_check(
+            code,
+            side=result.side,
+            price=result.price,
+            qty=result.qty,
+            verdict=result.verdict,
+            title=result.title,
+            reasons=result.reasons,
+            past=result.past,
+        )
     except Exception as exc:
         log.warning("纪律检查 %s 失败：%s", code, exc)
         return TEMPLATES.TemplateResponse(
@@ -498,6 +300,39 @@ def check(
             "result": result,
             "plan": plan,
             "spot": (hit.quote or {}).get("price"),
+            "check_id": check_id,
+            "followed": None,
+        },
+    )
+
+
+@app.post("/check/{code}/follow")
+def check_follow(
+    request: Request,
+    code: str,
+    check_id: str = Form(...),
+    followed: str = Form(...),
+):
+    yes = followed in ("yes", "1", "true", "听了")
+    mark_followed(code, check_id, yes)
+    holdings = store.list()
+    hit = next((h for h in holdings if h.code.strip() == code), None)
+    name = ((hit.quote or {}).get("name") or hit.name) if hit else code
+    recs = [c for c in load_checks(code, limit=20) if c.get("id") == check_id]
+    rec = recs[0] if recs else {}
+    return TEMPLATES.TemplateResponse(
+        request,
+        "check.html",
+        {
+            "code": code,
+            "name": name,
+            "error": None,
+            "result": None,
+            "plan": None,
+            "check_id": check_id,
+            "followed": rec.get("followed"),
+            "follow_note": "已记下：听了。" if yes else "已记下：没听，还是下了。",
+            "spot": (hit.quote or {}).get("price") if hit else None,
         },
     )
 
@@ -508,6 +343,12 @@ def journal(request: Request, code: str):
     hit = next((h for h in holdings if h.code.strip() == code), None)
     name = ((hit.quote or {}).get("name") or hit.name) if hit else code
     records = load_journal(code)
+    for r in records:
+        r["rule_bucket"] = stance_bucket(r.get("stance") or "")
+        r["note_bucket"] = (
+            note_bucket(r.get("note") or "") if (r.get("note_status") or "") == "ok" else ""
+        )
+    split = summarize_split(records)
     return TEMPLATES.TemplateResponse(
         request,
         "journal.html",
@@ -515,8 +356,26 @@ def journal(request: Request, code: str):
             "code": code,
             "name": name,
             "records": records,
-            "summary": summarize_outcomes(records),
+            "summary_rules": split["规则"],
+            "summary_notes": split["说明"],
+            "checks": load_checks(code),
         },
+    )
+
+
+@app.post("/jobs/close")
+def jobs_close(request: Request):
+    out = job_close(store)
+    return TEMPLATES.TemplateResponse(
+        request, "jobs.html", {"title": "收盘记账", "result": out}
+    )
+
+
+@app.post("/jobs/open")
+def jobs_open(request: Request):
+    out = job_open(store)
+    return TEMPLATES.TemplateResponse(
+        request, "jobs.html", {"title": "盘前推送", "result": out}
     )
 
 

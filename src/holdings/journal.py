@@ -31,6 +31,7 @@ def record_snapshot(
     defenses: list[dict] | None = None,
     confirm: str = "",
     payload: dict | None = None,
+    source: str = "page",
 ) -> bool:
     """追加一条快照；和上一条的 日期+现价+倾向 完全一样就跳过（防连续刷新刷屏）。
 
@@ -55,6 +56,7 @@ def record_snapshot(
         "defenses": defenses or [],
         "confirm": confirm,
         "payload": payload or {},
+        "source": source,
     }
     prev = load_journal(code, limit=1)
     if prev:
@@ -181,6 +183,14 @@ def stance_bucket(stance: str) -> str:
     return "其他"
 
 
+def note_bucket(note: str) -> str:
+    """LLM 说明 → 桶。有「判断」段落就只看那一段，避免论证里的词带偏。"""
+    s = note or ""
+    if "判断" in s:
+        s = s[s.rfind("判断") :]
+    return stance_bucket(s)
+
+
 def _hit(bucket: str, chg: float) -> bool | None:
     if bucket == "偏多":
         return chg > 1
@@ -192,15 +202,23 @@ def _hit(bucket: str, chg: float) -> bool | None:
 
 
 def summarize_outcomes(
-    records: list[dict], horizons: tuple[int, ...] = (5, 10)
+    records: list[dict],
+    horizons: tuple[int, ...] = (5, 10),
+    *,
+    field: str = "stance",
 ) -> list[dict]:
-    """按倾向桶聚合事后表现：[{bucket, n5, avg5, hit5, ...}]。样本少时调用方自己提示。"""
+    """按倾向桶聚合事后表现。field=stance 用规则，field=note 用说明。"""
     buckets: dict[str, dict[int, list[float]]] = {}
     for r in records:
         later = r.get("later") or {}
         if not later:
             continue
-        b = stance_bucket(r.get("stance") or "")
+        if field == "note":
+            if (r.get("note_status") or "") != "ok":
+                continue
+            b = note_bucket(r.get("note") or "")
+        else:
+            b = stance_bucket(r.get("stance") or "")
         for h in horizons:
             o = later.get(f"{h}d")
             if isinstance(o, dict) and isinstance(o.get("chg_pct"), (int, float)):
@@ -223,3 +241,95 @@ def summarize_outcomes(
                 row[f"hit{h}"] = f"{sum(hits)}/{len(vals)}"
         rows.append(row)
     return rows
+
+
+def summarize_split(records: list[dict]) -> dict[str, list[dict]]:
+    """规则 vs 说明两套计分，复盘页并排看谁更准。"""
+    return {
+        "规则": summarize_outcomes(records, field="stance"),
+        "说明": summarize_outcomes(records, field="note"),
+    }
+
+
+def _checks_path(code: str) -> Path:
+    return DATA_DIR / f"{code.strip()}.checks.jsonl"
+
+
+def record_check(
+    code: str,
+    *,
+    side: str,
+    price: float,
+    qty: float,
+    verdict: str,
+    title: str,
+    reasons: list[str] | None = None,
+    past: str = "",
+) -> str:
+    """记一笔纪律对照，返回 check_id。"""
+    from uuid import uuid4
+
+    code = code.strip()
+    now = datetime.now()
+    cid = now.strftime("%Y%m%d%H%M%S") + "-" + uuid4().hex[:6]
+    rec = {
+        "id": cid,
+        "ts": now.isoformat(timespec="seconds"),
+        "date": now.strftime("%Y-%m-%d"),
+        "code": code,
+        "side": side,
+        "price": price,
+        "qty": qty,
+        "verdict": verdict,
+        "title": title,
+        "reasons": reasons or [],
+        "past": past,
+        "followed": None,
+    }
+    DATA_DIR.mkdir(parents=True, exist_ok=True)
+    with _checks_path(code).open("a", encoding="utf-8") as fh:
+        fh.write(json.dumps(rec, ensure_ascii=False, default=str) + "\n")
+    return cid
+
+
+def load_checks(code: str, limit: int = 100) -> list[dict]:
+    path = _checks_path(code)
+    if not path.exists():
+        return []
+    out: list[dict] = []
+    with path.open(encoding="utf-8") as fh:
+        for line in fh:
+            line = line.strip()
+            if not line:
+                continue
+            try:
+                rec = json.loads(line)
+            except json.JSONDecodeError:
+                continue
+            if isinstance(rec, dict):
+                out.append(rec)
+    out.reverse()
+    return out[:limit]
+
+
+def mark_followed(code: str, check_id: str, followed: bool) -> bool:
+    """给某条对照打「听了/没听」。找到并改了返回 True。"""
+    path = _checks_path(code)
+    if not path.exists():
+        return False
+    recs = load_checks(code, limit=10_000)
+    recs.reverse()  # 写回要按文件原顺序（旧→新）
+    found = False
+    for rec in recs:
+        if rec.get("id") == check_id:
+            rec["followed"] = followed
+            found = True
+            break
+    if not found:
+        return False
+    tmp = path.with_suffix(".jsonl.tmp")
+    with tmp.open("w", encoding="utf-8") as fh:
+        for rec in recs:
+            fh.write(json.dumps(rec, ensure_ascii=False, default=str) + "\n")
+    tmp.replace(path)
+    return True

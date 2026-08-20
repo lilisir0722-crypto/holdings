@@ -79,7 +79,7 @@
       color: var(--muted);
       border: 1px solid var(--rule);
     }
-    .toolbar { display: flex; gap: 10px; align-items: center; margin-bottom: 24px; }
+    .toolbar { display: flex; gap: 10px; align-items: center; margin-bottom: 24px; flex-wrap: wrap; }
     .err { color: var(--stamp); margin-bottom: 16px; }
     .register {
       margin-top: 40px;
@@ -115,6 +115,12 @@
     <div class="toolbar">
       <form method="post" action="/refresh">
         <button type="submit">刷新行情</button>
+      </form>
+      <form method="post" action="/jobs/close">
+        <button type="submit">收盘记账</button>
+      </form>
+      <form method="post" action="/jobs/open">
+        <button type="submit">盘前推送</button>
       </form>
       {% if fetched_at %}<span class="meta">上次刷新 {{ fetched_at }}</span>{% endif %}
     </div>

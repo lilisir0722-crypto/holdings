@@ -6,10 +6,15 @@ import pytest
 import holdings.journal as journal
 from holdings.journal import (
     backfill_outcomes,
+    load_checks,
     load_journal,
+    mark_followed,
+    note_bucket,
+    record_check,
     record_snapshot,
     stance_bucket,
     summarize_outcomes,
+    summarize_split,
 )
 
 
@@ -154,6 +159,64 @@ def test_stance_bucket_order():
     assert stance_bucket("指标说法不一致，更宜观望。") == "观望"
     assert stance_bucket("偏观望") == "观望"
     assert stance_bucket("") == "其他"
+
+
+def test_note_bucket_uses_judgement_section():
+    note = "论证：KDJ 偏多、现价在 MA20 上方。判断：偏观望、略偏谨慎。"
+    assert note_bucket(note) == "观望"  # 不能被论证里的「偏多」带偏
+    assert note_bucket("判断：偏买。") == "偏多"
+    assert note_bucket("判断：偏卖/观望。") == "偏空"
+
+
+def test_summarize_split_rules_vs_notes():
+    recs = [
+        {
+            "stance": "偏多信号更多",
+            "note": "判断：偏观望。",
+            "note_status": "ok",
+            "later": {"5d": {"chg_pct": -3.0}},
+        },
+        {
+            "stance": "更宜观望",
+            "note": "判断：偏观望。",
+            "note_status": "ok",
+            "later": {"5d": {"chg_pct": 0.4}},
+        },
+        {
+            "stance": "偏空",
+            "note": "模型没写出来",
+            "note_status": "error",
+            "later": {"5d": {"chg_pct": -3.0}},
+        },
+    ]
+    split = summarize_split(recs)
+    rules = {r["bucket"]: r for r in split["规则"]}
+    notes = {r["bucket"]: r for r in split["说明"]}
+    assert rules["偏多"]["n5"] == 1 and rules["偏多"]["hit5"] == "0/1"
+    assert rules["观望"]["hit5"] == "1/1"
+    assert rules["偏空"]["hit5"] == "1/1"
+    assert "偏多" not in notes  # 说明都判观望；失败的那条不计入
+    assert notes["观望"]["n5"] == 2
+    assert notes["观望"]["hit5"] == "1/2"
+
+
+def test_record_and_mark_followed():
+    cid = record_check(
+        "562590",
+        side="买",
+        price=1.03,
+        qty=5000,
+        verdict="不符合",
+        title="这笔买不符合预案。",
+        reasons=["两头不靠"],
+    )
+    assert cid
+    recs = load_checks("562590")
+    assert recs[0]["followed"] is None
+    assert mark_followed("562590", cid, False)
+    recs = load_checks("562590")
+    assert recs[0]["followed"] is False
+    assert not mark_followed("562590", "no-such", True)
 
 
 def test_summarize_outcomes_groups_and_hits():

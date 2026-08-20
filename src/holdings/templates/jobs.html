@@ -1,0 +1,36 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>{{ title }}</title>
+  <style>
+    :root { --paper: #f3ead8; --ink: #1b1712; --muted: #6b6256; --rule: #c9bba3; --stamp: #9b1c1c; }
+    body { margin: 0; background: var(--paper); color: var(--ink); font-family: "Songti SC", "Noto Serif SC", Palatino, serif; line-height: 1.55; }
+    .wrap { max-width: 860px; margin: 0 auto; padding: 40px 24px 80px; }
+    .meta { font-size: 12px; color: var(--muted); }
+    .meta a { color: var(--muted); }
+    h2 { margin: 0 0 12px; }
+    .item { border-top: 1px solid var(--rule); padding: 8px 0; }
+    pre { white-space: pre-wrap; font-size: 13px; font-family: "IBM Plex Mono", Menlo, monospace; }
+  </style>
+</head>
+<body>
+  <div class="wrap">
+    <p class="meta"><a href="/">← 返回持仓</a></p>
+    <h2>{{ title }}</h2>
+    {% if result.kind == "open" %}
+      <p class="meta">{% if result.pushed %}已推到微信{% else %}没推出去（没配 SERVERCHAN_SENDKEY 或接口失败），正文如下{% endif %}</p>
+      <p><strong>{{ result.title }}</strong></p>
+      <pre>{{ result.body }}</pre>
+    {% endif %}
+    {% for it in result.items %}
+    <div class="item">
+      {{ it.name }} {{ it.code }}
+      {% if it.wrote %}· 已记{% elif it.error %}· {{ it.error }}{% elif result.kind == "close" %}· 与上一条重复，跳过{% endif %}
+      {% if it.stance %} · {{ it.stance }}{% endif %}
+    </div>
+    {% endfor %}
+  </div>
+</body>
+</html>

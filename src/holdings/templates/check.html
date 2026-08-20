@@ -58,6 +58,12 @@
       cursor: pointer;
       font-size: 14px;
     }
+    button.ghost {
+      background: transparent;
+      color: var(--muted);
+      border: 1px solid var(--rule);
+    }
+    .follow { display: flex; gap: 10px; margin-top: 12px; }
   </style>
 </head>
 <body>
@@ -76,6 +82,20 @@
         {% for r in result.reasons %}<li>{{ r }}</li>{% endfor %}
       </ul>
       {% if result.past %}<p class="past">{{ result.past }}</p>{% endif %}
+      {% if check_id %}
+      <form method="post" action="/check/{{ code }}/follow" class="follow">
+        <input type="hidden" name="check_id" value="{{ check_id }}" />
+        <button type="submit" name="followed" value="yes">听了</button>
+        <button type="submit" name="followed" value="no" class="ghost">没听，还是下了</button>
+      </form>
+      {% endif %}
+    </section>
+    {% endif %}
+
+    {% if follow_note %}
+    <section class="lede {% if followed %}yes{% else %}no{% endif %}">
+      <h3>{{ follow_note }}</h3>
+      <p class="meta">复盘页能看到这笔对照和你有没有照做。</p>
     </section>
     {% endif %}
 
