@@ -31,6 +31,7 @@ from holdings.tech import (
 )
 from holdings.tech_extra import attach_tech_extras, is_listed_etf
 from holdings.overseas import attach_overseas
+from holdings.journal import load_journal, record_snapshot
 from holdings.plan import build_plan
 
 DATA = Path.cwd() / "data" / "holdings.json"
@@ -343,6 +344,25 @@ def tech(request: Request, code: str):
     note, status = explain_tech(payload)
     report.model_note = note
     report.model_status = status
+    try:
+        record_snapshot(
+            code,
+            name=name,
+            price=price,
+            cost=hit.cost,
+            stance=report.stance,
+            trend=report.trend_title,
+            note=note,
+            note_status=status,
+            overseas_title=report.overseas.title if report.overseas else "",
+            defenses=[{"level": d.level, "label": d.label} for d in plan.defenses]
+            if plan.has
+            else [],
+            confirm=plan.confirm if plan.has else "",
+            payload=payload,
+        )
+    except Exception:
+        pass
     return TEMPLATES.TemplateResponse(
         request,
         "tech.html",
@@ -355,6 +375,19 @@ def tech(request: Request, code: str):
             "report": report,
             "plan": plan,
         },
+    )
+
+
+@app.get("/journal/{code}")
+def journal(request: Request, code: str):
+    holdings = store.list()
+    hit = next((h for h in holdings if h.code.strip() == code), None)
+    name = ((hit.quote or {}).get("name") or hit.name) if hit else code
+    records = load_journal(code)
+    return TEMPLATES.TemplateResponse(
+        request,
+        "journal.html",
+        {"code": code, "name": name, "records": records},
     )
 
 

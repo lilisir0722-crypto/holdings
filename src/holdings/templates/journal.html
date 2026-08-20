@@ -1,0 +1,84 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>{{ name }} · 复盘</title>
+  <style>
+    :root {
+      --paper: #f3ead8;
+      --ink: #1b1712;
+      --muted: #6b6256;
+      --rule: #c9bba3;
+      --stamp: #9b1c1c;
+      --card: #faf6ee;
+    }
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      background: var(--paper);
+      color: var(--ink);
+      font-family: "Songti SC", "Noto Serif SC", "Source Han Serif SC", Palatino, serif;
+      line-height: 1.55;
+    }
+    .wrap { max-width: 860px; margin: 0 auto; padding: 40px 24px 80px; }
+    .meta { font-size: 12px; color: var(--muted); }
+    .meta a { color: var(--muted); }
+    .meta a:hover { color: var(--stamp); }
+    h2 { margin: 0 0 4px; font-size: 24px; }
+    .snap { border-top: 1px solid var(--rule); padding: 14px 0; }
+    .snap-head { display: flex; justify-content: space-between; align-items: baseline; flex-wrap: wrap; gap: 4px 12px; }
+    .snap-head .ts { font-family: "IBM Plex Mono", "Menlo", monospace; font-size: 13px; color: var(--muted); }
+    .snap-head .px { font-size: 15px; }
+    .snap-stance { margin: 6px 0 2px; font-size: 15px; color: var(--stamp); }
+    .snap-line { margin: 2px 0; font-size: 14px; color: var(--muted); }
+    .snap-note { margin: 8px 0 0; font-size: 14px; background: var(--card); border: 1px solid var(--rule); padding: 8px 10px; }
+    .snap details { margin-top: 8px; }
+    .snap summary { cursor: pointer; font-size: 13px; color: var(--muted); }
+    .snap pre {
+      font-size: 12px; font-family: "IBM Plex Mono", "Menlo", monospace;
+      white-space: pre-wrap; word-break: break-all;
+      background: var(--card); border: 1px solid var(--rule); padding: 8px 10px;
+      max-height: 420px; overflow: auto;
+    }
+    .empty { color: var(--muted); margin-top: 24px; }
+  </style>
+</head>
+<body>
+  <div class="wrap">
+    <p class="meta"><a href="/tech/{{ code }}">← 返回技术详情</a> · <a href="/">持仓</a></p>
+    <h2>{{ name }} 的分析快照</h2>
+    <p class="meta">每次打开技术页记一条（连续刷新不重复记），最新在前，共 {{ records|length }} 条。复盘用：对照后来的走势，看当时的依据和预案靠不靠谱。</p>
+
+    {% if not records %}
+    <p class="empty">还没有快照。打开一次这只的技术页就会记下第一条。</p>
+    {% endif %}
+
+    {% for r in records %}
+    <section class="snap">
+      <div class="snap-head">
+        <span class="ts">{{ r.ts }}</span>
+        <span class="px">
+          现价 {{ "%.4f"|format(r.price) if r.price is not none else "暂无" }}
+          {% if r.cost %}· 成本 {{ "%.4f"|format(r.cost) }}{% endif %}
+        </span>
+      </div>
+      {% if r.stance %}<p class="snap-stance">{{ r.stance }}</p>{% endif %}
+      {% if r.trend %}<p class="snap-line">走势：{{ r.trend }}</p>{% endif %}
+      {% if r.overseas %}<p class="snap-line">外部：{{ r.overseas }}</p>{% endif %}
+      {% if r.defenses %}
+      <p class="snap-line">防守位：{% for d in r.defenses %}{{ d.level }}（{{ d.label }}）{% if not loop.last %} → {% endif %}{% endfor %}</p>
+      {% endif %}
+      {% if r.confirm %}<p class="snap-line">右侧确认：{{ r.confirm }}</p>{% endif %}
+      {% if r.note %}<p class="snap-note">{{ r.note }}</p>{% endif %}
+      {% if r.payload %}
+      <details>
+        <summary>当时给模型看的全部数据</summary>
+        <pre>{{ r.payload | tojson(indent=2) }}</pre>
+      </details>
+      {% endif %}
+    </section>
+    {% endfor %}
+  </div>
+</body>
+</html>
