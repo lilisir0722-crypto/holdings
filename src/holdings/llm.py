@@ -81,7 +81,7 @@ def explain_tech(payload: dict[str, Any]) -> tuple[str | None, str]:
     )
     t0 = time.monotonic()
     try:
-        with urllib.request.urlopen(req, timeout=30) as resp:
+        with urllib.request.urlopen(req, timeout=45) as resp:
             raw = json.loads(resp.read().decode("utf-8"))
         text = (
             raw.get("choices", [{}])[0]

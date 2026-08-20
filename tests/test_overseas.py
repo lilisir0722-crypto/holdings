@@ -186,3 +186,14 @@ def test_attach_overseas_never_breaks(monkeypatch):
     out = attach_overseas(report, name="半导体设备ETF华夏")
     assert out.overseas is not None
     assert not out.overseas.ok
+
+
+def test_attach_overseas_empty_quotes(monkeypatch):
+    # 接口没报错但返回空（限流的典型表现）：显示暂无，且走同样的兜底路径
+    monkeypatch.setattr(
+        "holdings.overseas.fetch_overseas", lambda timeout=8.0, pack=None: {}
+    )
+    report = TechReport(stance="x", stance_evidence=[], signals=[], quiet=[])
+    out = attach_overseas(report, name="半导体设备ETF华夏")
+    assert not out.overseas.ok
+    assert "暂时没有" in out.overseas.title

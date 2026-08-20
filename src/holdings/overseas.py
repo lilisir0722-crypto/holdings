@@ -290,5 +290,8 @@ def attach_overseas(
     except Exception as exc:
         log.warning("外部参照拉取失败（%s，包=%s）：%s", name, pack or "无", exc)
         quotes = None
+    if not quotes:
+        # 接口"成功但返回空"（push2 限流的典型表现）不抛异常，单独留痕
+        log.warning("外部参照为空（%s，包=%s）：接口没报错但没返回数据", name, pack or "无")
     report.overseas = summarize_overseas(quotes, pack=pack)
     return report
