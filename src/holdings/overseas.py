@@ -7,13 +7,19 @@
 from __future__ import annotations
 
 import json
+import time
 import urllib.request
 from datetime import datetime
+from pathlib import Path
 
 from holdings.log import get_logger
 from holdings.tech import InfoBlock
 
 log = get_logger("overseas")
+
+CACHE_DIR = Path(__file__).resolve().parent.parent.parent / "data" / "cache"
+CACHE_TTL = 120.0  # 秒内同一包不重复拉取（连刷不重复打请求，也少触发限流）
+CACHE_STALE_OK = 24 * 3600.0  # 兜底缓存超过一天就不用了
 
 # 通用宏观层：所有持仓都带。(secid, 分组)；名称以接口返回的 f14 为准
 COMMON_WATCHLIST: tuple[tuple[str, str], ...] = (
@@ -188,6 +194,77 @@ def fetch_overseas(timeout: float = 8.0, pack: str | None = None) -> dict[str, d
     return quotes
 
 
+def _cache_file(pack: str | None) -> Path:
+    return CACHE_DIR / f"overseas-{pack or 'macro'}.json"
+
+
+def _read_cache(pack: str | None) -> tuple[float, dict[str, dict]] | None:
+    try:
+        raw = json.loads(_cache_file(pack).read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError):
+        return None
+    if not isinstance(raw, dict):
+        return None
+    at, quotes = raw.get("fetched_at"), raw.get("quotes")
+    if not isinstance(at, (int, float)) or not isinstance(quotes, dict) or not quotes:
+        return None
+    return float(at), quotes
+
+
+def _write_cache(pack: str | None, quotes: dict[str, dict]) -> None:
+    try:
+        CACHE_DIR.mkdir(parents=True, exist_ok=True)
+        tmp = _cache_file(pack).with_suffix(".tmp")
+        tmp.write_text(
+            json.dumps({"fetched_at": time.time(), "quotes": quotes}, ensure_ascii=False),
+            encoding="utf-8",
+        )
+        tmp.replace(_cache_file(pack))
+    except OSError as exc:
+        log.info("外部参照缓存写入失败：%s", exc)
+
+
+def _try_fetch(pack: str | None, timeout: float) -> dict[str, dict] | None:
+    try:
+        quotes = fetch_overseas(timeout=timeout, pack=pack)
+    except Exception as exc:
+        log.info("外部参照拉取异常（包=%s）：%s", pack or "无", exc)
+        return None
+    if not quotes:
+        # 限流的典型表现：没报错但返回空
+        log.info("外部参照返回空（包=%s）", pack or "无")
+        return None
+    return quotes
+
+
+def fetch_overseas_cached(
+    pack: str | None = None,
+    timeout: float = 8.0,
+    ttl: float = CACHE_TTL,
+) -> tuple[dict[str, dict] | None, float, bool]:
+    """带避让的拉取。返回 (quotes, 数据时间戳, 是否本次新拉)。
+
+    - TTL 内直接用缓存，不打请求；
+    - 失败/为空时隔 1.5s 重试一次；
+    - 还失败就回退到 24h 内的旧缓存（fresh=False，由调用方决定是否提示）。
+    """
+    now = time.time()
+    cached = _read_cache(pack)
+    if cached and now - cached[0] < ttl:
+        return cached[1], cached[0], False
+
+    quotes = _try_fetch(pack, timeout)
+    if quotes is None:
+        time.sleep(1.5)
+        quotes = _try_fetch(pack, timeout)
+    if quotes:
+        _write_cache(pack, quotes)
+        return quotes, now, True
+    if cached and now - cached[0] < CACHE_STALE_OK:
+        return cached[1], cached[0], False
+    return None, 0.0, False
+
+
 def _fmt_chg(v: float | None) -> str:
     if v is None:
         return "涨跌暂无"
@@ -285,13 +362,14 @@ def attach_overseas(
 ):
     """按持仓选行业包，拉取并挂到 TechReport.overseas；失败挂暂无块，绝不打断主流程。"""
     pack = pick_pack(name, boards)
-    try:
-        quotes = fetch_overseas(timeout=timeout, pack=pack)
-    except Exception as exc:
-        log.warning("外部参照拉取失败（%s，包=%s）：%s", name, pack or "无", exc)
-        quotes = None
+    quotes, fetched_at, fresh = fetch_overseas_cached(pack=pack, timeout=timeout)
     if not quotes:
-        # 接口"成功但返回空"（push2 限流的典型表现）不抛异常，单独留痕
-        log.warning("外部参照为空（%s，包=%s）：接口没报错但没返回数据", name, pack or "无")
-    report.overseas = summarize_overseas(quotes, pack=pack)
+        log.warning("外部参照拉取失败且无缓存兜底（%s，包=%s）", name, pack or "无")
+    block = summarize_overseas(quotes, pack=pack)
+    if quotes and not fresh and time.time() - fetched_at > CACHE_TTL:
+        stamp = datetime.fromtimestamp(fetched_at).strftime("%m-%d %H:%M")
+        block.evidence.append(
+            f"本次刷新没拉到新数据（可能接口限流），展示的是 {stamp} 拉到的缓存。"
+        )
+    report.overseas = block
     return report

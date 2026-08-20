@@ -1,5 +1,9 @@
+import pytest
+
+import holdings.overseas as overseas
 from holdings.overseas import (
     attach_overseas,
+    fetch_overseas_cached,
     parse_futures_payload,
     parse_overseas_payload,
     pick_pack,
@@ -178,22 +182,105 @@ def test_summarize_overseas_empty():
 
 
 def test_attach_overseas_never_breaks(monkeypatch):
-    def boom(timeout=8.0, pack=None):
-        raise RuntimeError("network down")
-
-    monkeypatch.setattr("holdings.overseas.fetch_overseas", boom)
+    monkeypatch.setattr(
+        "holdings.overseas.fetch_overseas_cached",
+        lambda pack=None, timeout=8.0: (None, 0.0, False),
+    )
     report = TechReport(stance="x", stance_evidence=[], signals=[], quiet=[])
     out = attach_overseas(report, name="半导体设备ETF华夏")
     assert out.overseas is not None
     assert not out.overseas.ok
 
 
-def test_attach_overseas_empty_quotes(monkeypatch):
-    # 接口没报错但返回空（限流的典型表现）：显示暂无，且走同样的兜底路径
+def test_attach_overseas_stale_cache_note(monkeypatch):
+    import time as _time
+
+    quotes = parse_overseas_payload(_payload())
     monkeypatch.setattr(
-        "holdings.overseas.fetch_overseas", lambda timeout=8.0, pack=None: {}
+        "holdings.overseas.fetch_overseas_cached",
+        lambda pack=None, timeout=8.0: (quotes, _time.time() - 3600, False),
     )
     report = TechReport(stance="x", stance_evidence=[], signals=[], quiet=[])
     out = attach_overseas(report, name="半导体设备ETF华夏")
-    assert not out.overseas.ok
-    assert "暂时没有" in out.overseas.title
+    assert out.overseas.ok
+    assert "缓存" in out.overseas.evidence[-1]
+
+
+def test_attach_overseas_fresh_or_ttl_cache_no_note(monkeypatch):
+    import time as _time
+
+    quotes = parse_overseas_payload(_payload())
+    monkeypatch.setattr(
+        "holdings.overseas.fetch_overseas_cached",
+        lambda pack=None, timeout=8.0: (quotes, _time.time() - 30, False),
+    )
+    report = TechReport(stance="x", stance_evidence=[], signals=[], quiet=[])
+    out = attach_overseas(report, name="半导体设备ETF华夏")
+    assert out.overseas.ok
+    assert not any("缓存" in e for e in out.overseas.evidence)
+
+
+@pytest.fixture
+def tmp_cache(tmp_path, monkeypatch):
+    monkeypatch.setattr(overseas, "CACHE_DIR", tmp_path)
+    monkeypatch.setattr(overseas.time, "sleep", lambda s: None)  # 重试不等
+    return tmp_path
+
+
+def test_cached_fresh_fetch_writes_cache(tmp_cache, monkeypatch):
+    calls = {"n": 0}
+
+    def fake(timeout=8.0, pack=None):
+        calls["n"] += 1
+        return {"251.SOX": {"name": "费城半导体指数", "price": 100.0, "change_pct": 1.0, "ts": None}}
+
+    monkeypatch.setattr(overseas, "fetch_overseas", fake)
+    quotes, _at, fresh = fetch_overseas_cached(pack="半导体")
+    assert fresh and quotes["251.SOX"]["price"] == 100.0
+    # TTL 内第二次：不打请求
+    quotes2, _at2, fresh2 = fetch_overseas_cached(pack="半导体")
+    assert not fresh2 and calls["n"] == 1 and quotes2 == quotes
+    # 另一个包是另一份缓存
+    fetch_overseas_cached(pack=None)
+    assert calls["n"] == 2
+
+
+def test_cached_empty_triggers_retry(tmp_cache, monkeypatch):
+    calls = {"n": 0}
+
+    def flaky(timeout=8.0, pack=None):
+        calls["n"] += 1
+        return {} if calls["n"] == 1 else {"100.NDX": {"name": "纳斯达克", "price": 1.0, "change_pct": 0.1, "ts": None}}
+
+    monkeypatch.setattr(overseas, "fetch_overseas", flaky)
+    quotes, _at, fresh = fetch_overseas_cached()
+    assert calls["n"] == 2 and fresh and "100.NDX" in quotes
+
+
+def test_cached_total_failure_falls_back_to_stale(tmp_cache, monkeypatch):
+    # 先种一份 2 小时前的缓存
+    old = {"251.SOX": {"name": "费城半导体指数", "price": 99.0, "change_pct": -1.0, "ts": None}}
+    overseas._write_cache("半导体", old)
+    import json as _json
+    import time as _time
+
+    f = tmp_cache / "overseas-半导体.json"
+    raw = _json.loads(f.read_text(encoding="utf-8"))
+    raw["fetched_at"] = _time.time() - 7200
+    f.write_text(_json.dumps(raw), encoding="utf-8")
+
+    def boom(timeout=8.0, pack=None):
+        raise RuntimeError("empty reply")
+
+    monkeypatch.setattr(overseas, "fetch_overseas", boom)
+    quotes, at, fresh = fetch_overseas_cached(pack="半导体")
+    assert quotes == old and not fresh and at < _time.time() - 7000
+
+
+def test_cached_total_failure_no_cache(tmp_cache, monkeypatch):
+    def boom(timeout=8.0, pack=None):
+        raise RuntimeError("empty reply")
+
+    monkeypatch.setattr(overseas, "fetch_overseas", boom)
+    quotes, _at, fresh = fetch_overseas_cached(pack="机器人")
+    assert quotes is None and not fresh
