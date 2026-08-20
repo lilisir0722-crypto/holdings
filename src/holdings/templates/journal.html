@@ -42,6 +42,10 @@
       max-height: 420px; overflow: auto;
     }
     .empty { color: var(--muted); margin-top: 24px; }
+    .sum-table { width: 100%; border-collapse: collapse; margin: 14px 0 22px; font-size: 14px; }
+    .sum-table th, .sum-table td { border-top: 1px solid var(--rule); padding: 6px 8px 6px 0; text-align: left; }
+    .sum-table th { color: var(--muted); font-weight: normal; font-size: 13px; }
+    .snap-later { margin: 6px 0 0; font-size: 13px; color: #2a4a6b; }
   </style>
 </head>
 <body>
@@ -49,6 +53,23 @@
     <p class="meta"><a href="/tech/{{ code }}">← 返回技术详情</a> · <a href="/">持仓</a></p>
     <h2>{{ name }} 的分析快照</h2>
     <p class="meta">每次打开技术页记一条（连续刷新不重复记），最新在前，共 {{ records|length }} 条。复盘用：对照后来的走势，看当时的依据和预案靠不靠谱。</p>
+
+    {% if summary %}
+    <table class="sum-table">
+      <tr><th>当时的倾向</th><th>条数</th><th>5 个交易日后平均</th><th>说中</th><th>10 个交易日后平均</th><th>说中</th></tr>
+      {% for row in summary %}
+      <tr>
+        <td>{{ row.bucket }}</td>
+        <td>{{ row.n5 or row.n10 }}</td>
+        <td>{% if row.n5 %}{{ "%+.2f%%"|format(row.avg5) }}{% else %}—{% endif %}</td>
+        <td>{{ row.hit5 or "—" }}</td>
+        <td>{% if row.n10 %}{{ "%+.2f%%"|format(row.avg10) }}{% else %}—{% endif %}</td>
+        <td>{{ row.hit10 or "—" }}</td>
+      </tr>
+      {% endfor %}
+    </table>
+    <p class="meta">「说中」口径：偏多后涨超 1%、偏空后跌超 1%、观望后振幅不超 2%。样本少时别当真，攒几十条再看。</p>
+    {% endif %}
 
     {% if not records %}
     <p class="empty">还没有快照。打开一次这只的技术页就会记下第一条。</p>
@@ -70,6 +91,14 @@
       <p class="snap-line">防守位：{% for d in r.defenses %}{{ d.level }}（{{ d.label }}）{% if not loop.last %} → {% endif %}{% endfor %}</p>
       {% endif %}
       {% if r.confirm %}<p class="snap-line">右侧确认：{{ r.confirm }}</p>{% endif %}
+      {% if r.later %}
+      <p class="snap-later">
+        事后对照：
+        {% if r.later["5d"] %}5 个交易日后（{{ r.later["5d"].date }}）收 {{ r.later["5d"].close }}，{{ "%+.2f%%"|format(r.later["5d"].chg_pct) }}{% endif %}
+        {% if r.later["5d"] and r.later["10d"] %} · {% endif %}
+        {% if r.later["10d"] %}10 个交易日后（{{ r.later["10d"].date }}）收 {{ r.later["10d"].close }}，{{ "%+.2f%%"|format(r.later["10d"].chg_pct) }}{% endif %}
+      </p>
+      {% endif %}
       {% if r.note %}<p class="snap-note">{{ r.note }}</p>{% endif %}
       {% if r.payload %}
       <details>

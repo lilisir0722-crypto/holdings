@@ -32,7 +32,12 @@ from holdings.tech import (
 )
 from holdings.tech_extra import attach_tech_extras, is_listed_etf
 from holdings.overseas import attach_overseas
-from holdings.journal import load_journal, record_snapshot
+from holdings.journal import (
+    backfill_outcomes,
+    load_journal,
+    record_snapshot,
+    summarize_outcomes,
+)
 from holdings.log import get_logger
 from holdings.plan import build_plan
 
@@ -373,6 +378,12 @@ def tech(request: Request, code: str):
         )
     except Exception as exc:
         log.warning("技术页 %s 快照写入失败：%s", code, exc)
+    try:
+        backfilled = backfill_outcomes(code, kdf)
+        if backfilled:
+            log.info("技术页 %s 回填事后数据 %d 条", code, backfilled)
+    except Exception as exc:
+        log.warning("技术页 %s 事后回填失败：%s", code, exc)
     log.info(
         "技术页 %s 完成（耗时 %.1fs，说明状态 %s）",
         code,
@@ -403,7 +414,12 @@ def journal(request: Request, code: str):
     return TEMPLATES.TemplateResponse(
         request,
         "journal.html",
-        {"code": code, "name": name, "records": records},
+        {
+            "code": code,
+            "name": name,
+            "records": records,
+            "summary": summarize_outcomes(records),
+        },
     )
 
 
