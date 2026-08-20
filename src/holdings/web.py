@@ -2,7 +2,9 @@ from __future__ import annotations
 
 import time
 import webbrowser
+from datetime import datetime, timezone
 from pathlib import Path
+from zoneinfo import ZoneInfo
 
 import uvicorn
 from fastapi import FastAPI, Form, Request
@@ -49,6 +51,24 @@ log = get_logger("web")
 store = Store(DATA)
 app = FastAPI(title="持仓")
 
+_BEIJING = ZoneInfo("Asia/Shanghai")
+
+
+def format_beijing(raw) -> str:
+    """UTC/带时区的 ISO 时间 → 北京时间 'YYYY-MM-DD HH:MM:SS'。解析不了就原样返回。"""
+    if not raw:
+        return ""
+    if isinstance(raw, datetime):
+        dt = raw
+    else:
+        try:
+            dt = datetime.fromisoformat(str(raw).replace("Z", "+00:00"))
+        except ValueError:
+            return str(raw)
+    if dt.tzinfo is None:
+        dt = dt.replace(tzinfo=timezone.utc)
+    return dt.astimezone(_BEIJING).strftime("%Y-%m-%d %H:%M:%S")
+
 
 def _page(
     request: Request,
@@ -65,7 +85,7 @@ def _page(
     fetched_at = None
     for h in holdings:
         if h.quote and h.quote.get("fetched_at"):
-            fetched_at = h.quote["fetched_at"]
+            fetched_at = format_beijing(h.quote["fetched_at"])
             break
     return TEMPLATES.TemplateResponse(
         request,
