@@ -66,6 +66,27 @@
     .plan-table td { border-top: 1px solid var(--rule); padding: 7px 8px 7px 0; vertical-align: top; }
     .plan-table td:first-child { width: 52%; }
     .plan-table td:last-child { color: var(--muted); font-family: "Iowan Old Style", Palatino, serif; }
+    .check-form { margin-top: 14px; padding-top: 10px; border-top: 1px dashed var(--rule); }
+    .check-form .row { display: flex; flex-wrap: wrap; gap: 10px; align-items: end; }
+    .check-form label { display: flex; flex-direction: column; font-size: 12px; color: var(--muted); letter-spacing: 0.06em; }
+    .check-form input, .check-form select {
+      font-family: "IBM Plex Mono", Menlo, monospace;
+      font-size: 14px;
+      padding: 6px 8px;
+      border: 1px solid var(--rule);
+      background: var(--card);
+      color: var(--ink);
+      min-width: 90px;
+    }
+    .check-form button {
+      font-family: inherit;
+      background: var(--ink);
+      color: var(--paper);
+      border: 0;
+      padding: 8px 14px;
+      cursor: pointer;
+      font-size: 14px;
+    }
   </style>
 </head>
 <body>
@@ -163,6 +184,24 @@
             {% endfor %}
           </table>
           <p class="meta">{{ plan.note }}</p>
+          <form class="check-form" method="post" action="/check/{{ code }}">
+            <p class="meta">想动手？先对照纪律：价格填拟成交价，数量填拟买卖的股/份。</p>
+            <div class="row">
+              <label>方向
+                <select name="side">
+                  <option value="买">买</option>
+                  <option value="卖">卖</option>
+                </select>
+              </label>
+              <label>价格
+                <input name="price" type="number" step="any" required value="{{ "%.4f"|format(price) if price else "" }}" />
+              </label>
+              <label>数量
+                <input name="qty" type="number" step="any" required placeholder="股/份" />
+              </label>
+              <button type="submit">对照纪律</button>
+            </div>
+          </form>
         </section>
         {% endif %}
 

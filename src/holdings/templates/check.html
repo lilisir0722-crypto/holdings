@@ -1,0 +1,105 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>{{ name }} · 对照纪律</title>
+  <style>
+    :root {
+      --paper: #f3ead8;
+      --ink: #1b1712;
+      --muted: #6b6256;
+      --rule: #c9bba3;
+      --stamp: #9b1c1c;
+      --card: #faf6ee;
+    }
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      background: var(--paper);
+      color: var(--ink);
+      font-family: "Songti SC", "Noto Serif SC", "Source Han Serif SC", Palatino, serif;
+      line-height: 1.55;
+    }
+    .wrap { max-width: 860px; margin: 0 auto; padding: 40px 24px 80px; }
+    .meta { font-size: 12px; color: var(--muted); }
+    .meta a { color: var(--muted); }
+    .meta a:hover { color: var(--stamp); }
+    h2 { margin: 0 0 8px; font-size: 24px; }
+    .err { color: var(--stamp); }
+    .lede {
+      border-left: 3px solid var(--ink);
+      padding: 8px 0 8px 16px;
+      margin: 12px 0 20px;
+    }
+    .lede.no { border-left-color: var(--stamp); }
+    .lede.part { border-left-color: #6b4f2a; }
+    .lede.yes { border-left-color: #1f6b45; }
+    .lede h3 { margin: 0 0 8px; font-size: 20px; }
+    .evidence { margin: 0; padding-left: 1.2em; color: var(--muted); font-size: 14px; }
+    .past { margin: 10px 0 0; font-size: 14px; background: var(--card); border: 1px solid var(--rule); padding: 8px 10px; }
+    .row { display: flex; flex-wrap: wrap; gap: 10px; align-items: end; margin-top: 20px; }
+    label { display: flex; flex-direction: column; font-size: 12px; color: var(--muted); letter-spacing: 0.06em; }
+    input, select {
+      font-family: "IBM Plex Mono", Menlo, monospace;
+      font-size: 14px;
+      padding: 8px;
+      border: 1px solid var(--rule);
+      background: var(--card);
+      color: var(--ink);
+      min-width: 110px;
+    }
+    button {
+      font-family: inherit;
+      background: var(--ink);
+      color: var(--paper);
+      border: 0;
+      padding: 8px 14px;
+      cursor: pointer;
+      font-size: 14px;
+    }
+  </style>
+</head>
+<body>
+  <div class="wrap">
+    <p class="meta"><a href="/tech/{{ code }}">← 返回技术详情</a> · <a href="/">持仓</a></p>
+    <h2>{{ name }} · 操作前检查</h2>
+    <p class="meta">对照此刻的预案，看这笔和纪律对着干吗。不替你下单，也不保证后面盈亏。</p>
+
+    {% if error %}<p class="err">{{ error }}</p>{% endif %}
+
+    {% if result %}
+    <section class="lede {% if result.verdict == '不符合' %}no{% elif result.verdict == '部分符合' %}part{% elif result.verdict == '符合' %}yes{% endif %}">
+      <h3>{{ result.verdict }} · {{ result.title }}</h3>
+      <p class="meta">{{ result.side }} {{ "%.4f"|format(result.price) }} × {{ result.qty }}{% if result.amount %} · 约 {{ "%.0f"|format(result.amount) }} 元{% endif %}</p>
+      <ul class="evidence">
+        {% for r in result.reasons %}<li>{{ r }}</li>{% endfor %}
+      </ul>
+      {% if result.past %}<p class="past">{{ result.past }}</p>{% endif %}
+    </section>
+    {% endif %}
+
+    {% if plan and plan.has %}
+    <p class="meta">此刻防守位：{% for d in plan.defenses %}{{ "%.3f"|format(d.level) }}（{{ d.label }}）{% if not loop.last %} → {% endif %}{% endfor %}{% if plan.ma5 %} · MA5 {{ "%.3f"|format(plan.ma5) }}{% endif %}</p>
+    {% endif %}
+
+    <form method="post" action="/check/{{ code }}">
+      <div class="row">
+        <label>方向
+          <select name="side">
+            <option value="买" {% if result and result.side == "买" %}selected{% endif %}>买</option>
+            <option value="卖" {% if result and result.side == "卖" %}selected{% endif %}>卖</option>
+          </select>
+        </label>
+        <label>价格
+          <input name="price" type="number" step="any" required value="{{ result.price if result else (spot or "") }}" />
+        </label>
+        <label>数量
+          <input name="qty" type="number" step="any" required value="{{ result.qty if result else "" }}" placeholder="股/份" />
+        </label>
+        <button type="submit">再对照一次</button>
+      </div>
+    </form>
+  </div>
+</body>
+</html>

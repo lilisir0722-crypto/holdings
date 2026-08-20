@@ -32,6 +32,7 @@ from holdings.tech import (
 )
 from holdings.tech_extra import attach_tech_extras, is_listed_etf
 from holdings.overseas import attach_overseas
+from holdings.check import check_trade
 from holdings.journal import (
     backfill_outcomes,
     load_journal,
@@ -401,6 +402,82 @@ def tech(request: Request, code: str):
             "price": price,
             "report": report,
             "plan": plan,
+        },
+    )
+
+
+@app.post("/check/{code}")
+def check(
+    request: Request,
+    code: str,
+    side: str = Form(...),
+    price: float = Form(...),
+    qty: float = Form(...),
+):
+    holdings = store.list()
+    hit = next((h for h in holdings if h.code.strip() == code), None)
+    if hit is None:
+        return TEMPLATES.TemplateResponse(
+            request,
+            "check.html",
+            {
+                "code": code,
+                "name": code,
+                "error": "这只不在你已经填进来的持仓里。",
+                "result": None,
+                "plan": None,
+            },
+            status_code=404,
+        )
+    name = (hit.quote or {}).get("name") or hit.name or code
+    try:
+        with open_mac_client() as client:
+            kdf = fetch_kline(code, hit.kind, client=client)
+        chanlun = analyze_chanlun(kdf, code)
+        cash = store.load_cash()
+        snaps = [to_snapshot(h, h.quote) for h in holdings]
+        book = sum((s.quantity * s.price) for s in snaps if s.price is not None)
+        plan = build_plan(
+            kdf,
+            chanlun.fractals if chanlun and chanlun.ok else None,
+            cost=hit.cost,
+            cash_total=cash.total if cash.known else None,
+            book_value=book,
+        )
+        result = check_trade(
+            side=side,
+            price=price,
+            qty=qty,
+            plan=plan,
+            cash=cash.total if cash.known else None,
+            book=book,
+            hold_qty=hit.quantity,
+            cost=hit.cost,
+            journals=load_journal(code, limit=5),
+        )
+    except Exception as exc:
+        log.warning("纪律检查 %s 失败：%s", code, exc)
+        return TEMPLATES.TemplateResponse(
+            request,
+            "check.html",
+            {
+                "code": code,
+                "name": name,
+                "error": f"对照失败：{exc}",
+                "result": None,
+                "plan": None,
+            },
+        )
+    return TEMPLATES.TemplateResponse(
+        request,
+        "check.html",
+        {
+            "code": code,
+            "name": name,
+            "error": None,
+            "result": result,
+            "plan": plan,
+            "spot": (hit.quote or {}).get("price"),
         },
     )
 

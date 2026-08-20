@@ -19,6 +19,7 @@ class PlanScenario:
 class PlanView:
     has: bool = False
     price: float = 0.0
+    ma5: float | None = None
     defenses: list[PlanLevel] = field(default_factory=list)
     confirm: str = ""
     principles: list[str] = field(default_factory=list)
@@ -77,6 +78,7 @@ def build_plan(
         return out
     out.price = price
     ma5 = _ma(df, last, "ma5", 5)
+    out.ma5 = ma5
     ma20 = _ma(df, last, "ma20", 20)
     ma60 = _ma(df, last, "ma60", 60)
 
