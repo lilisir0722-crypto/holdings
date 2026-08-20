@@ -15,7 +15,30 @@ from easy_tdx.config import get_mac_hosts, get_port, save_best_mac_host
 from easy_tdx.mac.enums import Adjust, BoardType, Period
 
 from holdings.judge import MarketSnapshot, PositionSnapshot
+from holdings.log import get_logger
 from holdings.store import Holding
+
+log = get_logger("market")
+
+RETRY_TIMES = 3
+BACKOFF_BASE = 1.5  # 指数退避：1.5s、3s、6s
+
+
+def _retry(op, *, what: str):
+    """瞬时失败（SSL handshake timeout 一类）指数退避重试 RETRY_TIMES 次。"""
+    last: BaseException | None = None
+    for i in range(RETRY_TIMES + 1):
+        try:
+            return op()
+        except Exception as exc:
+            last = exc
+            if i >= RETRY_TIMES:
+                break
+            wait = BACKOFF_BASE * (2 ** i)
+            log.info("%s 第 %d 次重试，先等 %.1fs：%s", what, i + 1, wait, exc)
+            time.sleep(wait)
+    assert last is not None
+    raise last
 
 
 def rank_mac_hosts(
@@ -647,9 +670,13 @@ def fetch_eastmoney_etf(code: str) -> dict:
             "Referer": "https://quote.eastmoney.com/",
         },
     )
-    with urllib.request.urlopen(req, timeout=8) as resp:
-        raw = json.loads(resp.read().decode())
-    return parse_eastmoney_etf_quote(raw)
+
+    def _pull():
+        with urllib.request.urlopen(req, timeout=8) as resp:
+            raw = json.loads(resp.read().decode())
+        return parse_eastmoney_etf_quote(raw)
+
+    return _retry(_pull, what=f"ETF {code.strip()}")
 
 
 def parse_fund_gmbd(html: str) -> list[dict]:
@@ -688,9 +715,13 @@ def fetch_fund_gmbd(code: str, timeout: float = 8.0) -> list[dict]:
             "Referer": "https://fundf10.eastmoney.com/",
         },
     )
-    with urllib.request.urlopen(req, timeout=timeout) as resp:
-        raw = resp.read().decode("utf-8", errors="ignore")
-    return parse_fund_gmbd(raw)
+
+    def _pull():
+        with urllib.request.urlopen(req, timeout=timeout) as resp:
+            raw = resp.read().decode("utf-8", errors="ignore")
+        return parse_fund_gmbd(raw)
+
+    return _retry(_pull, what=f"份额变动 {code.strip()}")
 
 
 def fetch_kline(code: str, kind: str = "股票", count: int = 120, client=None):

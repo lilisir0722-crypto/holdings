@@ -123,3 +123,78 @@ def test_parse_fund_gmbd():
     assert rows[1]["redm"] == "20.25"
     assert parse_fund_gmbd("") == []
     assert parse_fund_gmbd("no table here") == []
+
+
+class _Resp:
+    def __init__(self, body: bytes):
+        self._body = body
+
+    def read(self):
+        return self._body
+
+    def __enter__(self):
+        return self
+
+    def __exit__(self, *args):
+        return False
+
+
+def test_fetch_eastmoney_etf_retries_ssl_timeout(monkeypatch):
+    import json
+
+    import holdings.market as market
+
+    waits: list[float] = []
+    calls = {"n": 0}
+    monkeypatch.setattr(market.time, "sleep", lambda s: waits.append(s))
+
+    def flaky(req, timeout=8):
+        calls["n"] += 1
+        if calls["n"] < 3:
+            raise OSError("_ssl.c:1063: The handshake operation timed out")
+        return _Resp(json.dumps({"data": {"f43": 1.05, "f46": 1.00, "f116": 8e9, "f58": "某ETF"}}).encode())
+
+    monkeypatch.setattr(market.urllib.request, "urlopen", flaky)
+    q = market.fetch_eastmoney_etf("562590")
+    assert q["price"] == 1.05
+    assert calls["n"] == 3
+    assert waits == [1.5, 3.0]
+
+
+def test_fetch_eastmoney_etf_gives_up_after_three_retries(monkeypatch):
+    import holdings.market as market
+
+    waits: list[float] = []
+    monkeypatch.setattr(market.time, "sleep", lambda s: waits.append(s))
+
+    def boom(req, timeout=8):
+        raise OSError("The handshake operation timed out")
+
+    monkeypatch.setattr(market.urllib.request, "urlopen", boom)
+    try:
+        market.fetch_eastmoney_etf("562590")
+        raise AssertionError("should have raised")
+    except OSError:
+        pass
+    assert waits == [1.5, 3.0, 6.0]
+
+
+def test_fetch_fund_gmbd_retries(monkeypatch):
+    import holdings.market as market
+
+    waits: list[float] = []
+    calls = {"n": 0}
+    monkeypatch.setattr(market.time, "sleep", lambda s: waits.append(s))
+    html = "<tr><td>2026-07-03</td><td>---</td><td>---</td><td>69.47</td><td>---</td><td>---</td></tr>"
+
+    def flaky(req, timeout=8.0):
+        calls["n"] += 1
+        if calls["n"] == 1:
+            raise OSError("The handshake operation timed out")
+        return _Resp(html.encode())
+
+    monkeypatch.setattr(market.urllib.request, "urlopen", flaky)
+    rows = market.fetch_fund_gmbd("562590")
+    assert rows[0]["shares"] == "69.47"
+    assert calls["n"] == 2
+    assert waits == [1.5]
