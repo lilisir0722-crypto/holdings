@@ -111,7 +111,8 @@ def test_pick_pack_by_name_and_boards():
     assert pick_pack("半导体设备ETF华夏") == "半导体"
     assert pick_pack("机器人ETF易方达") == "机器人"
     assert pick_pack("芯片ETF") == "半导体"
-    assert pick_pack("东方电气") is None
+    assert pick_pack("东方电气") == "电力设备"
+    assert pick_pack("贵州茅台") is None
     assert pick_pack("某某股票", ["电源设备", "机器人概念"]) == "机器人"
     assert pick_pack("", []) is None
 
@@ -144,6 +145,23 @@ def test_watchlist_for_includes_common():
     assert "171.US30Y" in semi and "251.SOX" in semi
     macro = dict(watchlist_for(None))
     assert "171.US30Y" in macro and "251.SOX" not in macro
+
+
+def test_power_pack_match_and_groups():
+    assert pick_pack("东方电气") == "电力设备"
+    assert pick_pack("某某", ["电力设备"]) == "电力设备"
+    raw = _payload()
+    raw["data"]["diff"] += [
+        {"f12": "GEV", "f13": 106, "f14": "GE Vernova Inc", "f2": 987.46, "f3": -1.7, "f124": 1787152800},
+        {"f12": "600875", "f13": 1, "f14": "东方电气", "f2": 25.91, "f3": -6.06, "f124": 1787152800},
+        {"f12": "980148", "f13": 0, "f14": "电力设备", "f2": 2933.21, "f3": -5.65, "f124": 1787152800},
+    ]
+    block = summarize_overseas(parse_overseas_payload(raw), pack="电力设备")
+    blob = "".join(block.evidence)
+    assert "海外：GE Vernova Inc -1.70%" in blob
+    assert "龙头：东方电气 -6.06%" in blob
+    assert "行业：电力设备 -5.65%" in blob
+    assert "设备：" not in blob
 
 
 def test_summarize_overseas_big_drop_warns():
