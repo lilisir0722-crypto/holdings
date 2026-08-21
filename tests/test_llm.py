@@ -27,6 +27,21 @@ def test_explain_tech_skipped_without_key(monkeypatch):
     assert text is None
 
 
+def test_explain_tech_incomplete_read_is_error(monkeypatch):
+    import http.client
+
+    monkeypatch.setenv("DEEPSEEK_API_KEY", "test-key")
+    llm.clear_explain_cache()
+
+    def boom(req, timeout=20):
+        raise http.client.IncompleteRead(b"")
+
+    monkeypatch.setattr(llm.urllib.request, "urlopen", boom)
+    text, status = llm.explain_tech({"代码": "562590", "现价": 1.05})
+    assert status == "error"
+    assert "IncompleteRead" in (text or "")
+
+
 def test_explain_tech_reuses_cache_for_same_code_and_price(monkeypatch):
     monkeypatch.setenv("DEEPSEEK_API_KEY", "test-key")
     monkeypatch.setenv("DEEPSEEK_MODEL", "deepseek-chat")

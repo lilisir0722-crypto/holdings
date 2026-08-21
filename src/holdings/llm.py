@@ -103,7 +103,7 @@ def explain_tech(payload: dict[str, Any]) -> tuple[str | None, str]:
             time.monotonic() - t0,
         )
         return text, "ok"
-    except (urllib.error.URLError, urllib.error.HTTPError, TimeoutError, json.JSONDecodeError, KeyError, IndexError) as exc:
+    except Exception as exc:
         log.warning(
             "DeepSeek 调用失败（%s，耗时 %.1fs）：%s",
             payload.get("代码") or "?",

@@ -11,6 +11,7 @@
     .meta { font-size: 12px; color: var(--muted); }
     .meta a { color: var(--muted); }
     h2 { margin: 0 0 12px; }
+    .err { color: var(--stamp); }
     .item { border-top: 1px solid var(--rule); padding: 8px 0; }
     pre { white-space: pre-wrap; font-size: 13px; font-family: "IBM Plex Mono", Menlo, monospace; }
   </style>
@@ -19,6 +20,7 @@
   <div class="wrap">
     <p class="meta"><a href="/">← 返回持仓</a></p>
     <h2>{{ title }}</h2>
+    {% if result.error %}<p class="err">{{ result.error }}</p>{% endif %}
     {% if result.kind == "open" %}
       <p class="meta">{% if result.pushed %}已推到微信{% else %}没推出去（没配 SERVERCHAN_SENDKEY 或接口失败），正文如下{% endif %}</p>
       <p><strong>{{ result.title }}</strong></p>

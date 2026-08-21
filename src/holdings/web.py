@@ -363,17 +363,25 @@ def journal(request: Request, code: str):
     )
 
 
-@app.post("/jobs/close")
+@app.api_route("/jobs/close", methods=["GET", "POST"])
 def jobs_close(request: Request):
-    out = job_close(store)
+    try:
+        out = job_close(store)
+    except Exception as exc:
+        log.warning("收盘记账失败：%s", exc)
+        out = {"ok": False, "kind": "close", "items": [], "error": str(exc)}
     return TEMPLATES.TemplateResponse(
         request, "jobs.html", {"title": "收盘记账", "result": out}
     )
 
 
-@app.post("/jobs/open")
+@app.api_route("/jobs/open", methods=["GET", "POST"])
 def jobs_open(request: Request):
-    out = job_open(store)
+    try:
+        out = job_open(store)
+    except Exception as exc:
+        log.warning("盘前推送失败：%s", exc)
+        out = {"ok": False, "kind": "open", "items": [], "error": str(exc), "title": "", "body": "", "pushed": False}
     return TEMPLATES.TemplateResponse(
         request, "jobs.html", {"title": "盘前推送", "result": out}
     )

@@ -91,17 +91,29 @@ def job_close(store: Store) -> dict:
         holdings = store.list()
     results = []
     for h in holdings:
-        run = run_tech(store, h, holdings, mode="full")
-        wrote = persist_run(run, h, source="close")
-        results.append(
-            {
-                "code": h.code,
-                "name": run.name,
-                "wrote": wrote,
-                "error": run.error,
-                "stance": run.report.stance if run.report else "",
-            }
-        )
+        try:
+            run = run_tech(store, h, holdings, mode="full")
+            wrote = persist_run(run, h, source="close")
+            results.append(
+                {
+                    "code": h.code,
+                    "name": run.name,
+                    "wrote": wrote,
+                    "error": run.error,
+                    "stance": run.report.stance if run.report else "",
+                }
+            )
+        except Exception as exc:
+            log.warning("收盘记账 %s 失败：%s", h.code, exc)
+            results.append(
+                {
+                    "code": h.code,
+                    "name": h.name or h.code,
+                    "wrote": False,
+                    "error": str(exc),
+                    "stance": "",
+                }
+            )
     log.info("收盘记账完成，%d 只", len(results))
     return {"ok": True, "kind": "close", "items": results}
 
