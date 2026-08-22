@@ -88,6 +88,7 @@ class TechReport:
     xdxr: InfoBlock | None = None
     etf: InfoBlock | None = None
     overseas: InfoBlock | None = None
+    intent: InfoBlock | None = None
 
 
 @dataclass
@@ -166,18 +167,16 @@ def summarize_capital(df) -> CapitalBlock:
     ordered = df.sort_values("date")
     last = ordered.iloc[-1]
     raw_date = last["date"]
-    if _is_missing(raw_date):
-        return empty
-    date_str = str(raw_date)[:10]
+    date_str = "" if _is_missing(raw_date) else str(raw_date)[:10]
     if date_str.lower() in ("", "nan", "nat", "none"):
-        return empty
+        date_str = "最近一日"
 
     if "main_net" in ordered.columns:
         main_net = _finite_float(last["main_net"], default=None)
         if main_net is None:
             return CapitalBlock(title="主力净流入数据不可用", ok=False)
     else:
-        main_net = 0.0
+        return empty
 
     if "small_net" in ordered.columns:
         small_net = _finite_float(last["small_net"], default=0.0)
@@ -201,6 +200,369 @@ def summarize_capital(df) -> CapitalBlock:
         ok=True,
         summary_line=summary_line,
     )
+
+
+_INTENT_NOTE = "公开数据里的「主力」是大单分类，不是账户；这是对照资金和价格的读法，不是保证。"
+
+
+def _capital_nets(df, col: str) -> list[float]:
+    return [row[col] for row in _capital_rows(df) if col in row]
+
+
+def _capital_rows(df) -> list[dict]:
+    if df is None or getattr(df, "empty", True):
+        return []
+    if "main_net" not in getattr(df, "columns", []):
+        return []
+    ordered = df.sort_values("date") if "date" in df.columns else df
+    rows: list[dict] = []
+    for _, item in ordered.iterrows():
+        main = _finite_float(item.get("main_net"), default=None)
+        if main is None:
+            continue
+        raw_date = item.get("date") if "date" in ordered.columns else ""
+        date_s = "" if _is_missing(raw_date) else str(raw_date).strip()[:10]
+        if date_s.lower() in ("", "nan", "nat", "none"):
+            date_s = ""
+        small = _finite_float(item.get("small_net"), default=None) if "small_net" in ordered.columns else None
+        row = {"date": date_s, "main_net": main}
+        if small is not None:
+            row["small_net"] = small
+        rows.append(row)
+    return rows
+
+
+def _close_change(daily_df, days: int) -> float | None:
+    if daily_df is None or getattr(daily_df, "empty", True):
+        return None
+    if "close" not in daily_df.columns:
+        return None
+    ordered = daily_df.sort_values("date") if "date" in daily_df.columns else daily_df
+    closes: list[float] = []
+    for raw in ordered["close"].tolist():
+        val = _finite_float(raw, default=None)
+        if val is not None:
+            closes.append(val)
+    if len(closes) < 2:
+        return None
+    span = min(days, len(closes) - 1)
+    old = closes[-(span + 1)]
+    last = closes[-1]
+    if not old:
+        return None
+    return last / old - 1
+
+
+def _kline_col(daily_df, *names) -> list[float]:
+    if daily_df is None or getattr(daily_df, "empty", True):
+        return []
+    ordered = daily_df.sort_values("date") if "date" in daily_df.columns else daily_df
+    for name in names:
+        if name not in ordered.columns:
+            continue
+        out: list[float] = []
+        for raw in ordered[name].tolist():
+            val = _finite_float(raw, default=None)
+            if val is not None:
+                out.append(val)
+        if out:
+            return out
+    return []
+
+
+def _avg(xs: list[float]) -> float | None:
+    return sum(xs) / len(xs) if xs else None
+
+
+def _bars(daily_df) -> list[dict]:
+    if daily_df is None or getattr(daily_df, "empty", True):
+        return []
+    if "close" not in daily_df.columns:
+        return []
+    ordered = daily_df.sort_values("date") if "date" in daily_df.columns else daily_df
+    vols = []
+    if "amount" in ordered.columns:
+        vols = [_finite_float(x, default=None) for x in ordered["amount"].tolist()]
+    elif "vol" in ordered.columns:
+        vols = [_finite_float(x, default=None) for x in ordered["vol"].tolist()]
+    bars: list[dict] = []
+    records = ordered.to_dict(orient="records")
+    for i, raw in enumerate(records):
+        close = _finite_float(raw.get("close"), default=None)
+        if close is None:
+            continue
+        open_p = _finite_float(raw.get("open"), default=close) or close
+        high = _finite_float(raw.get("high"), default=max(open_p, close)) or max(open_p, close)
+        low = _finite_float(raw.get("low"), default=min(open_p, close)) or min(open_p, close)
+        if high < max(open_p, close):
+            high = max(open_p, close)
+        if low > min(open_p, close):
+            low = min(open_p, close)
+        vol = vols[i] if i < len(vols) else None
+        bars.append({"open": open_p, "high": high, "low": low, "close": close, "vol": vol})
+    return bars
+
+
+def _upper_wick(bar: dict) -> float:
+    rng = bar["high"] - bar["low"]
+    if rng <= 0:
+        return 0.0
+    return (bar["high"] - max(bar["open"], bar["close"])) / rng
+
+
+def _lower_wick(bar: dict) -> float:
+    rng = bar["high"] - bar["low"]
+    if rng <= 0:
+        return 0.0
+    return (min(bar["open"], bar["close"]) - bar["low"]) / rng
+
+
+def _tape(tick_df) -> dict | None:
+    if tick_df is None or getattr(tick_df, "empty", True) or "price" not in getattr(tick_df, "columns", []):
+        return None
+    prices = [_finite_float(v, default=None) for v in tick_df["price"].tolist()]
+    prices = [p for p in prices if p is not None and p > 0]
+    if len(prices) < 5:
+        return None
+    open_p, last = prices[0], prices[-1]
+    high, low = max(prices), min(prices)
+    rng = high - low
+    if rng <= 0:
+        return {"open": open_p, "high": high, "low": low, "last": last, "close_pos": 0.5, "fade": 0.0, "bounce": 0.0, "tight": True}
+    hi_at = max(range(len(prices)), key=lambda i: prices[i])
+    lo_at = min(range(len(prices)), key=lambda i: prices[i])
+    return {
+        "open": open_p,
+        "high": high,
+        "low": low,
+        "last": last,
+        "close_pos": (last - low) / rng,
+        "fade": (high - last) / rng,
+        "bounce": (last - low) / rng,
+        "tight": rng / open_p < 0.008,
+        "high_early": hi_at <= len(prices) * 0.55,
+        "low_early": lo_at <= len(prices) * 0.55,
+    }
+
+
+def _intent_tape_probe(tape: dict | None) -> str | None:
+    if not tape or tape.get("tight"):
+        return None
+    if tape["fade"] >= 0.4 and tape["close_pos"] <= 0.35 and tape.get("high_early") and tape["high"] > tape["open"] * 1.008:
+        return "更像试盘：分时冲高后回落，尾盘没接住"
+    return None
+
+
+def _intent_tape_wash(tape: dict | None, mains: list[float]) -> str | None:
+    if not tape or tape.get("tight"):
+        return None
+    inflow = bool(mains) and (mains[-1] > 0 or (len(mains) >= 3 and sum(mains[-3:]) > 0))
+    if not inflow:
+        return None
+    if tape["bounce"] >= 0.65 and tape.get("low_early") and tape["low"] < tape["open"] * 0.992:
+        return "更像洗盘：分时先砸一截再收回"
+    return None
+
+
+def _intent_wick_distribute(bars: list[dict], mains: list[float]) -> str | None:
+    if len(bars) < 1 or not mains:
+        return None
+    last = bars[-1]
+    if _upper_wick(last) < 0.45:
+        return None
+    if mains[-1] >= 0 and not (len(mains) >= 4 and sum(1 for x in mains[-5:] if x < 0) >= 4):
+        return None
+    return "更像冲高派发：日K长上影，大单偏出"
+
+
+def _intent_probe(closes: list[float], vols: list[float]) -> str | None:
+    """前一日放量推一下，今天缩量没跟上 → 试盘。"""
+    if len(closes) < 4 or len(vols) < 4:
+        return None
+    base = _avg(vols[-6:-2] if len(vols) >= 6 else vols[:-2])
+    if not base:
+        return None
+    spike, last = vols[-2], vols[-1]
+    if spike < 1.8 * base or last > 0.85 * spike:
+        return None
+    if closes[-3] <= 0 or closes[-2] <= 0:
+        return None
+    if closes[-2] / closes[-3] - 1 < 0.005:
+        return None
+    if closes[-1] / closes[-2] - 1 > 0.003:
+        return None
+    return "更像试盘：前一日放量推了一下，今天缩量没跟上"
+
+
+def _intent_wash(closes: list[float], mains: list[float]) -> str | None:
+    """先砸一截再收回，大单仍偏流入 → 洗盘。"""
+    if len(closes) < 5 or len(mains) < 3:
+        return None
+    window = closes[-5:]
+    first, last = window[0], window[-1]
+    trough = min(window[1:-1])
+    if first <= 0 or trough > first * 0.985:
+        return None
+    if last < trough * 1.015:
+        return None
+    dip = first - trough
+    if dip <= 0 or (last - trough) < 0.6 * dip:
+        return None
+    recent = mains[-5:]
+    if sum(recent) < 0 and sum(1 for x in recent if x > 0) < 3:
+        return None
+    return "更像洗盘：先砸一截再收回，大单仍偏流入"
+
+
+def _intent_paired(closes: list[float], vols: list[float], mains: list[float], smalls: list[float]) -> str | None:
+    """放量、价格几乎不动、大小单对着做 → 对倒。"""
+    if len(vols) < 4 or len(closes) < 2 or not mains or not smalls:
+        return None
+    base = _avg(vols[-6:-1] if len(vols) >= 6 else vols[:-1])
+    if not base or vols[-1] < 1.8 * base:
+        return None
+    if closes[-2] <= 0:
+        return None
+    if abs(closes[-1] / closes[-2] - 1) > 0.008:
+        return None
+    if mains[-1] * smalls[-1] >= 0:
+        return None
+    return "更像对倒：放量但价格几乎不动，大单和小单对着做"
+
+
+def summarize_main_intent(
+    capital_df,
+    daily_df,
+    *,
+    boards=None,
+    etf=None,
+    unusual=None,
+    tick_df=None,
+) -> InfoBlock:
+    """对照分时、日K影线和主力净流入。不单独改买卖结论。"""
+    rows = _capital_rows(capital_df)
+    mains = [row["main_net"] for row in rows]
+    smalls = [row["small_net"] for row in rows if "small_net" in row]
+    closes = _kline_col(daily_df, "close")
+    vols = _kline_col(daily_df, "amount", "vol")
+    bars = _bars(daily_df)
+    tape = _tape(tick_df)
+    evidence = [
+        _INTENT_NOTE,
+        "常用读法：试盘、洗盘、吸筹、拉升、出货、对倒。先看分时和影线，再看近几日资金。",
+    ]
+    if not mains:
+        return InfoBlock(title="看不清主力意图", evidence=evidence, ok=False)
+
+    n = min(5, len(mains))
+    window = mains[-n:]
+    n_up = sum(1 for x in window if x > 0)
+    n_down = sum(1 for x in window if x < 0)
+    total = sum(window)
+    evidence.append(f"近 {n} 日主力合计 {_fmt_money(total)}，其中 {n_up} 日净流入为正")
+    for row in rows[-n:]:
+        day = row["date"] or "最近一日"
+        line = f"{day} 主力 {_fmt_money(row['main_net'])}"
+        if "small_net" in row:
+            line += f"，散户 {_fmt_money(row['small_net'])}"
+        evidence.append(line)
+    if smalls:
+        evidence.append(f"最近一日散户（小单）净流入 {_fmt_money(smalls[-1])}")
+
+    chg = _close_change(daily_df, n)
+    price = "flat"
+    if chg is not None:
+        evidence.append(f"价格近 {n} 日 {chg * 100:+.1f}%")
+        if chg >= 0.015:
+            price = "up"
+        elif chg <= -0.015:
+            price = "down"
+    else:
+        evidence.append("没有对得上的日 K，价格对照空着。")
+
+    if len(vols) >= 2:
+        base = _avg(vols[-6:-1] if len(vols) >= 6 else vols[:-1])
+        if base:
+            rel = vols[-1] / base
+            evidence.append(f"最近一日成交约是前几日均值的 {rel:.1f} 倍")
+
+    if tape:
+        evidence.append(
+            f"分时开 {tape['open']:.4f}，高 {tape['high']:.4f}，低 {tape['low']:.4f}，最新 {tape['last']:.4f}"
+        )
+        if tape["fade"] >= 0.4:
+            evidence.append("分时冲高后有回落。")
+        if tape["bounce"] >= 0.65 and tape.get("low_early"):
+            evidence.append("分时先砸后有收回。")
+        if tape["close_pos"] <= 0.15:
+            evidence.append("尾盘收在全天低位附近。")
+        elif tape["close_pos"] >= 0.85:
+            evidence.append("尾盘收在全天高位附近。")
+    if bars and _upper_wick(bars[-1]) >= 0.45:
+        evidence.append("最近一日日K上影偏长，冲高没收住。")
+    if bars and _lower_wick(bars[-1]) >= 0.45:
+        evidence.append("最近一日日K下影偏长，盘中砸过又收回。")
+
+    title = (
+        _intent_tape_probe(tape)
+        or _intent_tape_wash(tape, mains)
+        or _intent_probe(closes, vols)
+        or _intent_wash(closes, mains)
+        or _intent_paired(closes, vols, mains, smalls)
+        or _intent_wick_distribute(bars, mains)
+    )
+    if title is None:
+        if len(mains) < 3:
+            evidence.append("资金天数太少，不够看成连续意图。")
+            return InfoBlock(title="看不清主力意图", evidence=evidence, ok=False)
+        if n_up >= 4 and price == "down":
+            title = "更像逢跌吸筹"
+        elif n_down >= 4 and price == "up":
+            title = "更像冲高派发"
+        elif n_up >= 4 and price == "up" and chg is not None and chg >= 0.03:
+            title = "更像拉升"
+        elif n_up >= 4 and price == "up":
+            title = "更像顺势加仓"
+        elif n_down >= 4 and price == "down":
+            title = "更像顺势减仓"
+        elif n_up >= 4:
+            title = "更像大单在买，价格方向不明显"
+        elif n_down >= 4:
+            title = "更像大单在卖，价格方向不明显"
+        else:
+            title = "近几日资金方向不齐，看不清单一意图"
+    elif "试盘" in title:
+        if "分时" not in title:
+            evidence.append("前一日放量推了一下，今天缩量没跟上。")
+    elif "洗盘" in title and "分时" not in title:
+        evidence.append("近几日先有一截回撤，后又收回大半。")
+    elif "对倒" in title:
+        evidence.append("放量当天涨跌很小，大单和小单方向相反。")
+
+    for board in boards or []:
+        line = getattr(board, "summary_line", None) or getattr(board, "title", None)
+        if line:
+            evidence.append(str(line))
+    if etf is not None and getattr(etf, "ok", False):
+        bits = [etf.title, *(etf.evidence[:1] if etf.evidence else [])]
+        evidence.append("；".join(x for x in bits if x))
+    if unusual is not None and getattr(unusual, "ok", False):
+        evidence.append(unusual.title)
+
+    return InfoBlock(title=title, evidence=evidence, ok=True)
+
+
+def attach_main_intent(report: TechReport, ctx: dict | None) -> TechReport:
+    data = ctx or {}
+    report.intent = summarize_main_intent(
+        data.get("capital_df"),
+        data.get("daily_df"),
+        boards=report.boards,
+        etf=report.etf,
+        unusual=report.unusual,
+        tick_df=data.get("tick_df"),
+    )
+    return report
 
 
 # easy-tdx BoardType: HY=0, HY2=1; belong lists sometimes use 2 for industry; GN=3

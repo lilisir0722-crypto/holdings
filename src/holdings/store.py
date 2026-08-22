@@ -78,6 +78,27 @@ class Store:
     def list(self) -> list[Holding]:
         return self._load()
 
+    def get(self, item_id: str) -> Holding | None:
+        for item in self._load():
+            if item.id == item_id:
+                return item
+        return None
+
+    def update_position(self, item_id: str, *, quantity: float, cost: float) -> Holding | None:
+        items = self._load()
+        found = None
+        for item in items:
+            if item.id == item_id:
+                item.quantity = float(quantity)
+                item.cost = round(float(cost), 6)
+                item.updated_at = datetime.now(timezone.utc).isoformat()
+                found = item
+                break
+        if found is None:
+            return None
+        self._save(items)
+        return found
+
     def add(self, item: Holding) -> Holding:
         items = self._load()
         item.id = item.id or uuid.uuid4().hex[:8]

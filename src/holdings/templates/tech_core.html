@@ -1,0 +1,239 @@
+{% if error %}
+  <p class="err">{{ error }}</p>
+{% elif report %}
+<div data-part="lead">
+  <section class="lede tech-stance">
+    <h3>{{ report.stance }}</h3>
+    <ul class="evidence">
+      {% for e in report.stance_evidence %}
+        <li>{{ e }}</li>
+      {% endfor %}
+    </ul>
+  </section>
+
+  {% if plan and plan.tomorrow and plan.tomorrow.title %}
+  <section class="lede tech-tomorrow">
+    <h4>明日</h4>
+    <p><strong>{{ plan.tomorrow.title }}</strong></p>
+    <ul class="evidence">
+      {% if plan.tomorrow.open_bias %}<li>{{ plan.tomorrow.open_bias }}</li>{% endif %}
+      {% if plan.tomorrow.band %}<li>{{ plan.tomorrow.band }}</li>{% endif %}
+      {% for w in plan.tomorrow.watches %}<li>{{ w }}</li>{% endfor %}
+    </ul>
+    <p class="meta">{{ plan.tomorrow.note }}</p>
+  </section>
+  {% endif %}
+
+  {% if plan and plan.has %}
+  <section class="tech-group">
+    <h4>预案</h4>
+    <p><strong>防守位：{% for d in plan.defenses %}{{ "%.3f"|format(d.level) }}（{{ d.label }}）{% if not loop.last %} → {% endif %}{% endfor %}</strong></p>
+    <ul class="evidence">
+      {% if plan.confirm %}<li>{{ plan.confirm }}</li>{% endif %}
+      {% for p in plan.principles %}<li>{{ p }}</li>{% endfor %}
+    </ul>
+    <table class="plan-table">
+      {% for s in plan.scenarios %}
+      <tr><td>{{ s.case }}</td><td>{{ s.action }}</td></tr>
+      {% endfor %}
+    </table>
+    <p class="meta">{{ plan.note }}</p>
+    <form class="check-form" method="post" action="/check/{{ code }}">
+      <p class="meta">想动手？先对照纪律：价格填拟成交价，数量填拟买卖的股/份。</p>
+      <div class="row">
+        <label>方向
+          <select name="side">
+            <option value="buy">买</option>
+            <option value="sell">卖</option>
+          </select>
+        </label>
+        <label>价格
+          <input name="price" type="number" step="any" required value="{{ "%.4f"|format(price) if price else "" }}" />
+        </label>
+        <label>数量
+          <input name="qty" type="number" step="any" required placeholder="股/份" />
+        </label>
+        <button type="submit">对照纪律</button>
+      </div>
+    </form>
+  </section>
+  {% endif %}
+
+  {% if report.trend_title %}
+  <section class="tech-group">
+    <h4>走势</h4>
+    <p><strong>{{ report.trend_title }}</strong></p>
+    <ul class="evidence">
+      {% for e in report.trend_evidence %}
+        <li>{{ e }}</li>
+      {% endfor %}
+    </ul>
+  </section>
+  {% endif %}
+
+  {% if report.guides %}
+  <section class="tech-group">
+    <h4>对照</h4>
+    <p class="meta">从 easy_tdx 常见做法抽出来的四条，用这只的日 K 核对；不是选股扫描，也不是保证。</p>
+    {% for g in report.guides %}
+    <article class="tech-item">
+      <strong>{{ g.title }}</strong>
+      <ul class="evidence">
+        {% for e in g.evidence %}<li>{{ e }}</li>{% endfor %}
+      </ul>
+    </article>
+    {% endfor %}
+  </section>
+  {% endif %}
+</div>
+<div data-part="rest">
+
+  {% if report.chanlun %}
+  <section class="tech-group">
+    <h4>缠论</h4>
+    <p><strong>{{ report.chanlun.title }}</strong></p>
+    <p class="meta">{{ report.chanlun.note }}</p>
+    {% if report.chanlun.klines %}
+    <div class="chanlun-chart-wrap">
+      <canvas id="chanlun-chart" width="800" height="320"></canvas>
+      <p class="chanlun-legend">K 线 · 折线是笔 · 色带是中枢上下沿 · 三角是买卖点（红买 / 绿卖）。点三角看说明。</p>
+      <p class="chanlun-tip" id="chanlun-tip"></p>
+    </div>
+    <script type="application/json" id="chanlun-data">{{ {
+      "klines": report.chanlun.klines,
+      "bis": report.chanlun.bis,
+      "zss": report.chanlun.zss,
+      "mmds": report.chanlun.mmds
+    } | tojson }}</script>
+    {% elif report.chanlun.counts %}
+    <ul class="evidence">
+      {% for k, v in report.chanlun.counts.items() %}
+        <li>{{ k }} {{ v }}</li>
+      {% endfor %}
+    </ul>
+    {% endif %}
+
+    <details class="tech-group quiet">
+      <summary>缠论明细（点开看数字）</summary>
+    {% if report.chanlun.counts %}
+    <ul class="evidence">
+      {% for k, v in report.chanlun.counts.items() %}
+        <li>{{ k }} {{ v }}</li>
+      {% endfor %}
+    </ul>
+    {% endif %}
+
+    <details class="tech-group quiet">
+      <summary>分型（{{ report.chanlun.fractals|length }}）</summary>
+      {% if report.chanlun.fractals %}
+      <ul class="evidence">
+        {% for row in report.chanlun.fractals %}
+          <li>[{{ row.index }}] {% if row.type == 'ding' %}顶{% elif row.type == 'di' %}底{% else %}{{ row.type }}{% endif %} {{ row.date }} 值 {{ row.val }}{% if row.done is defined and not row.done %} …{% else %} ✓{% endif %}</li>
+        {% endfor %}
+      </ul>
+      {% else %}
+      <p class="meta">没有分型记录。</p>
+      {% endif %}
+    </details>
+
+    <details class="tech-group quiet">
+      <summary>笔（{{ report.chanlun.bis|length }}）</summary>
+      {% if report.chanlun.bis %}
+      <ul class="evidence">
+        {% for row in report.chanlun.bis %}
+          <li>[{{ row.index }}] {% if row.direction == 'up' %}向上{% elif row.direction == 'down' %}向下{% else %}{{ row.direction }}{% endif %} {{ row.start_date }} → {{ row.end_date }} 高 {{ row.high }} 低 {{ row.low }}{% if row.done %} ✓{% else %} …{% endif %}</li>
+        {% endfor %}
+      </ul>
+      {% else %}
+      <p class="meta">没有笔记录。</p>
+      {% endif %}
+    </details>
+
+    <details class="tech-group quiet">
+      <summary>中枢（{{ report.chanlun.zss|length }}）</summary>
+      {% if report.chanlun.zss %}
+      <ul class="evidence">
+        {% for row in report.chanlun.zss %}
+          <li>[{{ row.index }}] 上沿 {{ row.zg }} 下沿 {{ row.zd }} 最高 {{ row.gg }} 最低 {{ row.dd }} 笔数 {{ row.line_count }} {{ row.start_date }} → {{ row.end_date }}{% if row.done %} ✓{% else %} …{% endif %}</li>
+        {% endfor %}
+      </ul>
+      {% else %}
+      <p class="meta">没有中枢记录。</p>
+      {% endif %}
+    </details>
+
+    <details class="tech-group quiet">
+      <summary>线段（{{ report.chanlun.xds|length }}）</summary>
+      {% if report.chanlun.xds %}
+      <ul class="evidence">
+        {% for row in report.chanlun.xds %}
+          <li>[{{ row.index }}] {% if row.direction == 'up' %}向上{% elif row.direction == 'down' %}向下{% else %}{{ row.direction }}{% endif %} {{ row.start_date }} → {{ row.end_date }} 高 {{ row.high }} 低 {{ row.low }}</li>
+        {% endfor %}
+      </ul>
+      {% else %}
+      <p class="meta">没有线段记录。</p>
+      {% endif %}
+    </details>
+
+    <details class="tech-group quiet">
+      <summary>买卖点（{{ report.chanlun.mmds|length }}）</summary>
+      {% if report.chanlun.mmds %}
+      <ul class="evidence">
+        {% for row in report.chanlun.mmds %}
+          <li>{{ row.type }} {{ row.date }} {{ row.msg }}</li>
+        {% endfor %}
+      </ul>
+      {% else %}
+      <p class="meta">没有买卖点记录。</p>
+      {% endif %}
+    </details>
+
+    <details class="tech-group quiet">
+      <summary>背驰（{{ report.chanlun.bcs|length }}）</summary>
+      {% if report.chanlun.bcs %}
+      <ul class="evidence">
+        {% for row in report.chanlun.bcs %}
+          <li>{{ row.type }} {{ row.curr_date }} {{ row.msg }}</li>
+        {% endfor %}
+      </ul>
+      {% else %}
+      <p class="meta">没有背驰记录。</p>
+      {% endif %}
+    </details>
+    </details>
+  </section>
+  {% endif %}
+
+  {% if report.signals %}
+  <section class="tech-group">
+    <h4>有信号</h4>
+    {% for s in report.signals %}
+    <article class="tech-item signal">
+      <strong>{{ s.name }}</strong>
+      {% if s.about %}<p class="tech-about">{{ s.about }}</p>{% endif %}
+      <p>{{ s.reading }}</p>
+      <ul class="evidence">
+        {% for e in s.evidence %}<li>{{ e }}</li>{% endfor %}
+      </ul>
+    </article>
+    {% endfor %}
+  </section>
+  {% endif %}
+
+  {% if report.quiet %}
+  <details class="tech-group quiet">
+    <summary>其余指标（{{ report.quiet|length }}）</summary>
+    {% for s in report.quiet %}
+    <article class="tech-item">
+      <strong>{{ s.name }}</strong>
+      {% if s.about %}<p class="tech-about">{{ s.about }}</p>{% endif %}
+      <p>{{ s.reading }}</p>
+      <ul class="evidence">
+        {% for e in s.evidence %}<li>{{ e }}</li>{% endfor %}
+      </ul>
+    </article>
+    {% endfor %}
+  </details>
+  {% endif %}
+</div>
+{% endif %}

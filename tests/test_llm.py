@@ -80,3 +80,68 @@ def test_explain_tech_misses_cache_when_price_changes(monkeypatch):
     llm.explain_tech({"代码": "562590", "现价": 1.05})
     llm.explain_tech({"代码": "562590", "现价": 1.06})
     assert calls["n"] == 2
+
+
+def test_chat_with_page_puts_payload_in_system_every_turn(monkeypatch):
+    monkeypatch.setenv("DEEPSEEK_API_KEY", "test-key")
+    captured = []
+
+    def fake_urlopen(req, timeout=20):
+        captured.append(json.loads(req.data.decode("utf-8")))
+        return _Resp({"choices": [{"message": {"content": "按这页数据看，先观望。"}}]})
+
+    monkeypatch.setattr(llm.urllib.request, "urlopen", fake_urlopen)
+    payload = {"代码": "562590", "现价": 1.05, "成本": 1.14}
+    text, status, *_rest = llm.chat_with_page(payload, history=[], message="现在能加吗")
+    assert status == "ok"
+    assert "观望" in text
+    sys0 = captured[0]["messages"][0]["content"]
+    assert "562590" in sys0
+    assert "1.05" in sys0
+    assert captured[0]["messages"][-1]["content"] == "现在能加吗"
+
+    payload2 = {"代码": "562590", "现价": 1.08, "成本": 1.14}
+    history = [
+        {"role": "user", "content": "现在能加吗"},
+        {"role": "assistant", "content": "按这页数据看，先观望。"},
+    ]
+    llm.chat_with_page(payload2, history=history, message="那防线呢")
+    sys1 = captured[1]["messages"][0]["content"]
+    assert "1.08" in sys1
+    assert captured[1]["messages"][-1]["content"] == "那防线呢"
+    roles = [m["role"] for m in captured[1]["messages"]]
+    assert roles[0] == "system"
+    assert "user" in roles and "assistant" in roles
+
+
+def test_chat_with_page_uses_selected_model(monkeypatch):
+    monkeypatch.setenv("DEEPSEEK_API_KEY", "test-key")
+    monkeypatch.setenv("DEEPSEEK_MODEL", "deepseek-chat")
+    captured = []
+
+    def fake_urlopen(req, timeout=20):
+        captured.append(json.loads(req.data.decode("utf-8")))
+        return _Resp({"choices": [{"message": {"content": "答"}}]})
+
+    monkeypatch.setattr(llm.urllib.request, "urlopen", fake_urlopen)
+    llm.chat_with_page(
+        {"代码": "562590"},
+        history=[],
+        message="问",
+        model="deepseek-v4-pro",
+    )
+    assert captured[0]["model"] == "deepseek-v4-pro"
+
+
+def test_chat_with_page_ignores_unknown_model(monkeypatch):
+    monkeypatch.setenv("DEEPSEEK_API_KEY", "test-key")
+    monkeypatch.setenv("DEEPSEEK_MODEL", "deepseek-chat")
+    captured = []
+
+    def fake_urlopen(req, timeout=20):
+        captured.append(json.loads(req.data.decode("utf-8")))
+        return _Resp({"choices": [{"message": {"content": "答"}}]})
+
+    monkeypatch.setattr(llm.urllib.request, "urlopen", fake_urlopen)
+    llm.chat_with_page({"代码": "562590"}, history=[], message="问", model="gpt-whatever")
+    assert captured[0]["model"] == "deepseek-v4-flash"

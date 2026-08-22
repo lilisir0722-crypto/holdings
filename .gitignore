@@ -2,7 +2,9 @@
 __pycache__/
 *.pyc
 .pytest_cache/
-data/
+data/*
+!data/fflow/
+!data/fflow/**
 dist/
 *.egg-info/
 .DS_Store

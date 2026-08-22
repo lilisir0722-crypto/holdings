@@ -38,6 +38,21 @@ def test_add_with_place(tmp_path):
     assert listed[0].id == item.id
 
 
+def test_update_position_rewrites_qty_and_cost(tmp_path):
+    store = Store(tmp_path / "holdings.json")
+    item = store.add(
+        Holding(kind="基金", code="562590", name="半导", quantity=1000, cost=1.0)
+    )
+    updated = store.update_position(item.id, quantity=2000, cost=1.1)
+    assert updated is not None
+    assert updated.quantity == 2000
+    assert updated.cost == 1.1
+    loaded = store.get(item.id)
+    assert loaded is not None
+    assert loaded.quantity == 2000
+    assert loaded.cost == 1.1
+
+
 def test_save_and_load_cash(tmp_path):
     from holdings.store import CashBook, Store
 

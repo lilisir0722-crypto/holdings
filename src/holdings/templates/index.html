@@ -55,6 +55,8 @@
       margin-bottom: 14px;
     }
     .pos-head { display: flex; justify-content: space-between; align-items: baseline; gap: 12px; }
+    .pos-actions { display: flex; align-items: baseline; gap: 10px; }
+    .pos-actions a.meta { color: var(--muted); text-decoration: underline; text-underline-offset: 3px; }
     .pos-head h3 { margin: 0; font-size: 20px; }
     .code { color: var(--muted); font-family: "IBM Plex Mono", "Menlo", monospace; font-size: 13px; letter-spacing: 0.04em; }
     .nums { display: flex; gap: 18px; flex-wrap: wrap; margin: 10px 0 12px; font-family: "IBM Plex Mono", "Menlo", monospace; font-size: 13px; }
@@ -101,6 +103,7 @@
     }
     .empty { color: var(--muted); padding: 24px 0; }
     .meta { font-size: 12px; color: var(--muted); }
+    .add-lot { margin-top: 12px; }
   </style>
 </head>
 <body>
@@ -191,9 +194,12 @@
             <div>
               <h3><a class="pos-name" href="/tech/{{ p.snapshot.code }}">{{ p.snapshot.name }}</a> <span class="code">{{ p.snapshot.kind }} {{ p.snapshot.code }}{% if p.snapshot.place %} · {{ p.snapshot.place }}{% endif %}</span></h3>
             </div>
-            <form class="inline" method="post" action="/delete/{{ h.id }}">
-              <button class="ghost" type="submit">删掉</button>
-            </form>
+            <div class="pos-actions">
+              <a class="meta" href="/lots/{{ h.id }}">买入记录</a>
+              <form class="inline" method="post" action="/delete/{{ h.id }}">
+                <button class="ghost" type="submit">删掉</button>
+              </form>
+            </div>
           </div>
           <div class="nums">
             <span>数量 {{ p.snapshot.quantity }}</span>
@@ -221,6 +227,16 @@
               </ul>
             </div>
           {% endfor %}
+          <form class="row add-lot" method="post" action="/add-lot/{{ h.id }}">
+            <label>追加数量
+              <input name="quantity" type="number" step="any" min="0" required />
+            </label>
+            <label>买入价
+              <input name="price" type="number" step="any" min="0" required
+                {% if p.snapshot.price %}value="{{ '%.4f'|format(p.snapshot.price) }}"{% endif %} />
+            </label>
+            <button type="submit">追加</button>
+          </form>
         </article>
       {% endfor %}
     {% else %}

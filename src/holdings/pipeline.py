@@ -6,6 +6,7 @@ mode=plan：日 K + 预案 + 外部参照，不跑 LLM（盘前推送，要快�
 
 from __future__ import annotations
 
+import threading
 import time
 from dataclasses import dataclass, field
 
@@ -27,6 +28,7 @@ from holdings.tech import (
     TechReport,
     analyze_chanlun,
     analyze_kline,
+    attach_main_intent,
     attach_market_context,
     enrich_with_account,
 )
@@ -47,6 +49,26 @@ class TechRun:
     payload: dict = field(default_factory=dict)
     error: str | None = None
     elapsed: float = 0.0
+    extras_done: bool = False
+
+
+_PAGE_RUNS: dict[str, TechRun] = {}
+_PAGE_LOCK = threading.Lock()
+
+
+def remember_run(run: TechRun) -> None:
+    with _PAGE_LOCK:
+        _PAGE_RUNS[run.code] = run
+
+
+def recall_run(code: str) -> TechRun | None:
+    with _PAGE_LOCK:
+        return _PAGE_RUNS.get(code.strip())
+
+
+def clear_page_runs() -> None:
+    with _PAGE_LOCK:
+        _PAGE_RUNS.clear()
 
 
 def _empty_ctx() -> dict:
@@ -73,23 +95,61 @@ def _fetch_ctx(code: str, kind: str, *, extras: bool) -> tuple[object, dict]:
         ctx = _empty_ctx()
     ctx["daily_df"] = kdf
     if extras:
-        try:
-            ctx["xdxr_df"] = fetch_xdxr(code)
-        except Exception as exc:
-            log.info("%s 除权数据拉取失败：%s", code, exc)
-            ctx["xdxr_df"] = None
-        if is_listed_etf(code):
-            try:
-                ctx["etf"] = fetch_eastmoney_etf(code)
-            except Exception as exc:
-                log.info("%s ETF 数据拉取失败：%s", code, exc)
-                ctx["etf"] = {}
-            try:
-                ctx["etf_gmbd"] = fetch_fund_gmbd(code)
-            except Exception as exc:
-                log.info("%s 份额变动拉取失败：%s", code, exc)
-                ctx["etf_gmbd"] = None
+        _fill_xdxr_etf(ctx, code)
+        _fill_capital_history(ctx, code)
     return kdf, ctx
+
+
+def _fill_xdxr_etf(ctx: dict, code: str) -> None:
+    try:
+        ctx["xdxr_df"] = fetch_xdxr(code)
+    except Exception as exc:
+        log.info("%s 除权数据拉取失败：%s", code, exc)
+        ctx["xdxr_df"] = None
+    if is_listed_etf(code):
+        try:
+            ctx["etf"] = fetch_eastmoney_etf(code)
+        except Exception as exc:
+            log.info("%s ETF 数据拉取失败：%s", code, exc)
+            ctx["etf"] = {}
+        try:
+            ctx["etf_gmbd"] = fetch_fund_gmbd(code)
+        except Exception as exc:
+            log.info("%s 份额变动拉取失败：%s", code, exc)
+            ctx["etf_gmbd"] = None
+
+
+def _fetch_extras_ctx(code: str, kdf) -> dict:
+    ctx: dict = _empty_ctx()
+    try:
+        with open_mac_client() as client:
+            try:
+                fetched = fetch_market_context(client, code)
+                if fetched:
+                    ctx = fetched
+            except Exception as exc:
+                log.warning("%s 市场上下文拉取失败：%s", code, exc)
+                ctx = _empty_ctx()
+    except Exception as exc:
+        log.warning("%s 外部行情客户端失败：%s", code, exc)
+    if ctx is None:
+        ctx = _empty_ctx()
+    ctx["daily_df"] = kdf
+    _fill_xdxr_etf(ctx, code)
+    _fill_capital_history(ctx, code)
+    return ctx
+
+
+def _fill_capital_history(ctx: dict, code: str) -> None:
+    """通达信当日资金写入 data/fflow/{code}.json，页面用本地攒下的历史。"""
+    from holdings.fflow import to_frame, upsert_snapshot
+
+    try:
+        rows = upsert_snapshot(code, ctx.get("capital_df"))
+    except Exception as exc:
+        log.info("%s 资金流向本地库失败：%s", code, exc)
+        rows = []
+    ctx["capital_df"] = to_frame(rows) if rows else None
 
 
 def _build_payload(name, code, price, cost, report, plan, cash_total, market_quote) -> dict:
@@ -123,6 +183,8 @@ def _build_payload(name, code, price, cost, report, plan, cash_total, market_quo
             "今日涨跌幅": market_quote.get("day_change_pct"),
             "近20日涨跌幅": market_quote.get("change_20d_pct"),
         }
+    if report.intent:
+        payload["主力意图"] = [report.intent.title, *report.intent.evidence]
     if report.capital:
         payload["资金数据"] = [report.capital.title, *report.capital.evidence]
     if report.boards:
@@ -156,6 +218,58 @@ def _build_payload(name, code, price, cost, report, plan, cash_total, market_quo
     return payload
 
 
+def _set_payload(run: TechRun, store: Store, hit: Holding) -> None:
+    if run.report is None:
+        run.payload = {}
+        return
+    cash = store.load_cash()
+    run.payload = _build_payload(
+        run.name,
+        run.code,
+        run.price,
+        hit.cost,
+        run.report,
+        run.plan,
+        cash.total if cash.known else None,
+        store.load_market(),
+    )
+
+
+def fill_overseas(run: TechRun, *, boards: list | None = None) -> TechRun:
+    if run.report is None:
+        return run
+    run.report = attach_overseas(run.report, name=run.name, boards=boards or [])
+    if run.plan and run.plan.has:
+        run.plan.tomorrow = build_tomorrow(run.plan, overseas=run.report.overseas)
+    return run
+
+
+def fill_extras(run: TechRun, store: Store, hit: Holding) -> TechRun:
+    if run.report is None:
+        return run
+    ctx = _fetch_extras_ctx(run.code, run.kdf)
+    run.report = attach_market_context(run.report, ctx, code=run.code)
+    run.report = attach_tech_extras(run.report, ctx, code=run.code)
+    run.report = attach_main_intent(run.report, ctx)
+    boards = list((ctx.get("board_names") or {}).values())
+    fill_overseas(run, boards=boards)
+    run.extras_done = True
+    _set_payload(run, store, hit)
+    return run
+
+
+def fill_note(run: TechRun, store: Store, hit: Holding) -> TechRun:
+    from holdings.llm import explain_tech
+
+    if run.report is None:
+        return run
+    _set_payload(run, store, hit)
+    note, status = explain_tech(run.payload)
+    run.report.model_note = note
+    run.report.model_status = status
+    return run
+
+
 def run_tech(
     store: Store,
     hit: Holding,
@@ -163,17 +277,41 @@ def run_tech(
     *,
     mode: str = "full",
 ) -> TechRun:
-    """跑一只的技术分析。失败时 TechRun.error 有说明，不抛给调用方。"""
+    """跑一只的技术分析。失败时 TechRun.error 有说明，不抛给调用方。
+
+    mode=core：日 K、指标、预案、缠论。
+    mode=plan：core + 外部参照（盘前）。
+    mode=full：core + 外部/资金/ETF + LLM（收盘记账）。
+    """
+    run = _run_core(store, hit, holdings)
+    if run.error and run.report is None:
+        return run
+    if mode == "core":
+        _set_payload(run, store, hit)
+        return run
+    if mode == "plan":
+        fill_overseas(run)
+        _set_payload(run, store, hit)
+        return run
+    fill_extras(run, store, hit)
+    fill_note(run, store, hit)
+    return run
+
+
+def _run_core(
+    store: Store,
+    hit: Holding,
+    holdings: list[Holding] | None = None,
+) -> TechRun:
     code = hit.code.strip()
     price = None
     if hit.quote and hit.quote.get("price") is not None:
         price = hit.quote["price"]
     name = (hit.quote or {}).get("name") or hit.name or code
     run = TechRun(code=code, name=name, kind=hit.kind, price=price)
-    extras = mode == "full"
     t0 = time.monotonic()
     try:
-        kdf, ctx = _fetch_ctx(code, hit.kind, extras=extras)
+        kdf, _ctx = _fetch_ctx(code, hit.kind, extras=False)
     except Exception as exc:
         log.warning("%s 行情拉取失败：%s", code, exc)
         run.error = f"行情连不上：{exc}"
@@ -184,7 +322,6 @@ def run_tech(
     cash = store.load_cash()
     snaps = [to_snapshot(h, h.quote) for h in holdings]
     book = sum((s.quantity * s.price) for s in snaps if s.price is not None)
-    boards = list((ctx.get("board_names") or {}).values())
 
     if kdf is None or getattr(kdf, "empty", True):
         report = TechReport(
@@ -193,13 +330,10 @@ def run_tech(
             signals=[],
             quiet=[],
         )
-        if extras:
-            report = attach_market_context(report, ctx, code=code)
-            report = attach_tech_extras(report, ctx, code=code)
-        report = attach_overseas(report, name=name, boards=boards)
         report.chanlun = analyze_chanlun(None, code)
         run.report = report
         run.elapsed = time.monotonic() - t0
+        log.info("%s 分析完成（mode=core，耗时 %.1fs，无日 K）", code, run.elapsed)
         return run
 
     try:
@@ -220,10 +354,6 @@ def run_tech(
         cost=hit.cost,
         price=price,
     )
-    if extras:
-        report = attach_market_context(report, ctx, code=code)
-        report = attach_tech_extras(report, ctx, code=code)
-    report = attach_overseas(report, name=name, boards=boards)
     report.chanlun = analyze_chanlun(kdf, code)
     plan = build_plan(
         kdf,
@@ -232,35 +362,12 @@ def run_tech(
         cash_total=cash.total if cash.known else None,
         book_value=book,
     )
+    if plan and plan.has:
+        plan.tomorrow = build_tomorrow(plan, overseas=None)
     run.plan = plan
     run.report = report
-    if plan and plan.has:
-        plan.tomorrow = build_tomorrow(plan, overseas=report.overseas)
-    if mode == "full":
-        from holdings.llm import explain_tech
-
-        payload = _build_payload(
-            name,
-            code,
-            price,
-            hit.cost,
-            report,
-            plan,
-            cash.total if cash.known else None,
-            store.load_market(),
-        )
-        note, status = explain_tech(payload)
-        report.model_note = note
-        report.model_status = status
-        run.payload = payload
     run.elapsed = time.monotonic() - t0
-    log.info(
-        "%s 分析完成（mode=%s，耗时 %.1fs，说明状态 %s）",
-        code,
-        mode,
-        run.elapsed,
-        getattr(run.report, "model_status", "") or "-",
-    )
+    log.info("%s 分析完成（mode=core，耗时 %.1fs）", code, run.elapsed)
     return run
 
 

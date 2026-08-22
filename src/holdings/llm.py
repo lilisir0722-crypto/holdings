@@ -40,34 +40,52 @@ SYSTEM_PROMPT = (
     "控制在 220 字以内。"
 )
 
+CHAT_SYSTEM = (
+    "你是帮助个人投资者看懂持仓现状的助手。"
+    "每次提问都会附上当前详情页的数据（数值、涨跌幅、点位、算法测量结果），不是现成的结论。"
+    "请根据这些数据和用户的问题回答。不要编造没有的数据。"
+    "用 Markdown 排版：小标题、列表、加粗重点；需要分层时分段写，不要挤成一段。"
+    "不能保证后面还会不会继续亏。"
+)
 
-def explain_tech(payload: dict[str, Any]) -> tuple[str | None, str]:
-    """Call DeepSeek to narrate tech context. Returns (text, status).
+CHAT_MODELS = (
+    "deepseek-v4-flash",
+    "deepseek-v4-pro",
+    "deepseek-v4-flash-vision-exp",
+)
 
-    status: skipped | ok | error
-    """
+
+def resolve_model(name: str | None) -> str:
+    raw = (name or "").strip()
+    if raw in CHAT_MODELS:
+        return raw
+    cfg = _settings()
+    if cfg is not None and cfg[2] in CHAT_MODELS:
+        return cfg[2]
+    return "deepseek-v4-flash"
+
+
+def _settings() -> tuple[str, str, str] | None:
     api_key = (os.environ.get("DEEPSEEK_API_KEY") or "").strip()
     if not api_key:
-        return None, "skipped"
-
+        return None
     base = (os.environ.get("DEEPSEEK_BASE_URL") or "https://api.deepseek.com").rstrip("/")
-    model = (os.environ.get("DEEPSEEK_MODEL") or "deepseek-chat").strip()
-    key = _cache_key(payload, model)
-    cached = _CACHE.get(key)
-    if cached is not None:
-        _CACHE.move_to_end(key)
-        return cached
+    model = (os.environ.get("DEEPSEEK_MODEL") or "deepseek-v4-flash").strip()
+    return api_key, base, model
+
+
+def _complete(
+    messages: list[dict], *, code: str, model: str | None = None
+) -> tuple[str | None, str, str]:
+    cfg = _settings()
+    if cfg is None:
+        return None, "skipped", ""
+    api_key, base, _env_model = cfg
+    use_model = resolve_model(model)
     url = f"{base}/v1/chat/completions"
-
-    system = SYSTEM_PROMPT
-    user = "依据如下（JSON）：\n" + json.dumps(payload, ensure_ascii=False)
-
     body = {
-        "model": model,
-        "messages": [
-            {"role": "system", "content": system},
-            {"role": "user", "content": user},
-        ],
+        "model": use_model,
+        "messages": messages,
         "temperature": 0.3,
     }
     req = urllib.request.Request(
@@ -83,31 +101,86 @@ def explain_tech(payload: dict[str, Any]) -> tuple[str | None, str]:
     try:
         with urllib.request.urlopen(req, timeout=600) as resp:
             raw = json.loads(resp.read().decode("utf-8"))
-        text = (
-            raw.get("choices", [{}])[0]
-            .get("message", {})
-            .get("content", "")
-            .strip()
-        )
+        msg = raw.get("choices", [{}])[0].get("message", {}) or {}
+        text = str(msg.get("content") or "").strip()
+        reasoning = str(msg.get("reasoning_content") or "").strip()
+        if not text and reasoning:
+            text, reasoning = reasoning, ""
         if not text:
             log.warning("DeepSeek 返回空（耗时 %.1fs）", time.monotonic() - t0)
-            return None, "error"
+            return None, "error", ""
+        log.info(
+            "模型回复成功（%s，%s，%d 字，耗时 %.1fs）",
+            code or "?",
+            use_model,
+            len(text),
+            time.monotonic() - t0,
+        )
+        return text, "ok", reasoning
+    except Exception as exc:
+        log.warning(
+            "DeepSeek 调用失败（%s，耗时 %.1fs）：%s",
+            code or "?",
+            time.monotonic() - t0,
+            exc,
+        )
+        return f"模型没写出来：{exc}", "error", ""
+
+
+def explain_tech(payload: dict[str, Any]) -> tuple[str | None, str]:
+    """Call DeepSeek to narrate tech context. Returns (text, status).
+
+    status: skipped | ok | error
+    """
+    cfg = _settings()
+    if cfg is None:
+        return None, "skipped"
+    _, _, model = cfg
+    key = _cache_key(payload, model)
+    cached = _CACHE.get(key)
+    if cached is not None:
+        _CACHE.move_to_end(key)
+        return cached
+    user = "依据如下（JSON）：\n" + json.dumps(payload, ensure_ascii=False)
+    text, status, _reason = _complete(
+        [
+            {"role": "system", "content": SYSTEM_PROMPT},
+            {"role": "user", "content": user},
+        ],
+        code=str(payload.get("代码") or ""),
+    )
+    if status == "ok" and text:
         _CACHE[key] = (text, "ok")
         _CACHE.move_to_end(key)
         while len(_CACHE) > _CACHE_MAX:
             _CACHE.popitem(last=False)
-        log.info(
-            "说明生成成功（%s，%d 字，耗时 %.1fs）",
-            payload.get("代码") or "?",
-            len(text),
-            time.monotonic() - t0,
-        )
-        return text, "ok"
-    except Exception as exc:
-        log.warning(
-            "DeepSeek 调用失败（%s，耗时 %.1fs）：%s",
-            payload.get("代码") or "?",
-            time.monotonic() - t0,
-            exc,
-        )
-        return f"模型没写出来：{exc}", "error"
+    return text, status
+
+
+def chat_with_page(
+    payload: dict[str, Any],
+    history: list[dict] | None,
+    message: str,
+    model: str | None = None,
+) -> tuple[str | None, str, str]:
+    """多轮对话。每轮 system 都带上当前详情页数据。"""
+    text = (message or "").strip()
+    if not text:
+        return "先写一句要问的。", "error", ""
+    messages: list[dict] = [
+        {
+            "role": "system",
+            "content": CHAT_SYSTEM
+            + "\n\n当前详情页数据（JSON）：\n"
+            + json.dumps(payload, ensure_ascii=False),
+        }
+    ]
+    for item in (history or [])[-20:]:
+        if not isinstance(item, dict):
+            continue
+        role = item.get("role")
+        content = str(item.get("content") or "").strip()
+        if role in ("user", "assistant") and content:
+            messages.append({"role": role, "content": content})
+    messages.append({"role": "user", "content": text})
+    return _complete(messages, code=str(payload.get("代码") or ""), model=model)

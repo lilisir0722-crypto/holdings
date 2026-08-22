@@ -6,8 +6,8 @@ from pathlib import Path
 from zoneinfo import ZoneInfo
 
 import uvicorn
-from fastapi import FastAPI, Form, Request
-from fastapi.responses import HTMLResponse, RedirectResponse
+from fastapi import Body, FastAPI, Form, Request
+from fastapi.responses import HTMLResponse, JSONResponse, RedirectResponse
 from fastapi.templating import Jinja2Templates
 
 from holdings.judge import judge_all, look_one
@@ -20,6 +20,7 @@ from holdings.market import (
     to_snapshot,
 )
 from holdings.store import CashBook, Holding, Store
+from holdings.lots import apply_buy, apply_delete, ensure_opening, load_lots
 from holdings.tech import analyze_chanlun
 from holdings.check import check_trade
 from holdings.journal import (
@@ -33,7 +34,15 @@ from holdings.journal import (
 )
 from holdings.jobs import job_close, job_open
 from holdings.log import get_logger
-from holdings.pipeline import persist_run, run_tech
+from holdings.pipeline import (
+    fill_extras,
+    fill_note,
+    persist_run,
+    recall_run,
+    remember_run,
+    run_tech,
+    _set_payload,
+)
 from holdings.plan import build_plan
 
 DATA = Path.cwd() / "data" / "holdings.json"
@@ -123,6 +132,46 @@ def add(
     return RedirectResponse("/", status_code=303)
 
 
+@app.post("/add-lot/{item_id}")
+def add_lot(
+    request: Request,
+    item_id: str,
+    quantity: float = Form(...),
+    price: float = Form(...),
+):
+    hit = store.get(item_id)
+    if hit is None:
+        return _page(request, error="这只不在持仓里。")
+    try:
+        apply_buy(store, hit, quantity, price)
+    except ValueError as exc:
+        return _page(request, error=str(exc))
+    return RedirectResponse("/", status_code=303)
+
+
+@app.get("/lots/{item_id}", response_class=HTMLResponse)
+def lots_page(request: Request, item_id: str):
+    hit = store.get(item_id)
+    if hit is None:
+        return _page(request, error="这只不在持仓里。")
+    ensure_opening(hit)
+    recs = list(reversed(load_lots(hit.id)))
+    hit = store.get(item_id) or hit
+    return TEMPLATES.TemplateResponse(
+        request,
+        "lots.html",
+        {"holding": hit, "lots": recs},
+    )
+
+
+@app.post("/delete-lot/{item_id}/{lot_id}")
+def delete_lot(item_id: str, lot_id: str):
+    hit = store.get(item_id)
+    if hit is not None:
+        apply_delete(store, hit, lot_id)
+    return RedirectResponse(f"/lots/{item_id}", status_code=303)
+
+
 @app.post("/delete/{item_id}")
 def delete(item_id: str):
     store.delete(item_id)
@@ -185,30 +234,50 @@ def tech(request: Request, code: str):
         return TEMPLATES.TemplateResponse(
             request,
             "tech.html",
-            {"error": "这只不在你已经填进来的持仓里。", "code": code, "name": code, "kind": "", "price": None, "report": None},
+            {
+                "error": "这只不在你已经填进来的持仓里。",
+                "code": code,
+                "name": code,
+                "kind": "",
+                "price": None,
+            },
             status_code=404,
         )
-    run = run_tech(store, hit, holdings, mode="full")
-    if run.error and run.report is None:
-        return TEMPLATES.TemplateResponse(
-            request,
-            "tech.html",
-            {
-                "error": run.error,
-                "code": code,
-                "name": run.name,
-                "kind": hit.kind,
-                "price": run.price,
-                "report": None,
-            },
-        )
-    persist_run(run, hit, source="page")
+    price = (hit.quote or {}).get("price")
+    name = (hit.quote or {}).get("name") or hit.name or code
     return TEMPLATES.TemplateResponse(
         request,
         "tech.html",
         {
             "error": None,
             "code": code,
+            "name": name,
+            "kind": hit.kind,
+            "price": price,
+        },
+    )
+
+
+def _tech_hit(code: str):
+    code = code.strip()
+    holdings = store.list()
+    hit = next((h for h in holdings if h.code.strip() == code), None)
+    return hit, holdings
+
+
+@app.get("/tech/{code}/core", response_class=HTMLResponse)
+def tech_core(request: Request, code: str):
+    hit, holdings = _tech_hit(code)
+    if hit is None:
+        return HTMLResponse("这只不在你已经填进来的持仓里。", status_code=404)
+    run = run_tech(store, hit, holdings, mode="core")
+    remember_run(run)
+    return TEMPLATES.TemplateResponse(
+        request,
+        "tech_core.html",
+        {
+            "error": run.error if run.report is None else None,
+            "code": code.strip(),
             "name": run.name,
             "kind": hit.kind,
             "price": run.price,
@@ -216,6 +285,66 @@ def tech(request: Request, code: str):
             "plan": run.plan,
         },
     )
+
+
+@app.get("/tech/{code}/extras", response_class=HTMLResponse)
+def tech_extras(request: Request, code: str):
+    hit, holdings = _tech_hit(code)
+    if hit is None:
+        return HTMLResponse("这只不在你已经填进来的持仓里。", status_code=404)
+    run = recall_run(code) or run_tech(store, hit, holdings, mode="core")
+    if run.report is None:
+        remember_run(run)
+        return TEMPLATES.TemplateResponse(
+            request, "tech_extras.html", {"report": None, "plan": None, "error": run.error}
+        )
+    fill_extras(run, store, hit)
+    remember_run(run)
+    return TEMPLATES.TemplateResponse(
+        request,
+        "tech_extras.html",
+        {"report": run.report, "plan": run.plan, "error": None},
+    )
+
+
+@app.get("/tech/{code}/note", response_class=HTMLResponse)
+def tech_note(request: Request, code: str):
+    hit, holdings = _tech_hit(code)
+    if hit is None:
+        return HTMLResponse("这只不在你已经填进来的持仓里。", status_code=404)
+    run = recall_run(code) or run_tech(store, hit, holdings, mode="core")
+    if run.report is None:
+        remember_run(run)
+        return TEMPLATES.TemplateResponse(request, "tech_note.html", {"report": None})
+    fill_note(run, store, hit)
+    persist_run(run, hit, source="page")
+    remember_run(run)
+    return TEMPLATES.TemplateResponse(request, "tech_note.html", {"report": run.report})
+
+
+@app.post("/tech/{code}/chat")
+def tech_chat(code: str, body: dict = Body(...)):
+    from holdings.llm import chat_with_page
+
+    hit, _holdings = _tech_hit(code)
+    if hit is None:
+        return JSONResponse({"ok": False, "error": "这只不在持仓里。"}, status_code=404)
+    run = recall_run(code)
+    if run is None or run.report is None:
+        return JSONResponse({"ok": False, "error": "核心还没出来"}, status_code=409)
+    _set_payload(run, store, hit)
+    text, status, reasoning = chat_with_page(
+        run.payload,
+        body.get("history") or [],
+        body.get("message") or "",
+        model=body.get("model"),
+    )
+    return {
+        "ok": status == "ok",
+        "status": status,
+        "text": text or "",
+        "reasoning": reasoning or "",
+    }
 
 
 @app.post("/check/{code}")

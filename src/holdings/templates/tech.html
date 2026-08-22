@@ -16,23 +16,51 @@
       --card: #faf6ee;
     }
     * { box-sizing: border-box; }
+    html, body { height: 100%; }
     body {
       margin: 0;
       background: var(--paper);
       color: var(--ink);
       font-family: "Songti SC", "Noto Serif SC", "Source Han Serif SC", Palatino, serif;
       line-height: 1.55;
+      display: flex;
+      flex-direction: column;
     }
-    .wrap { max-width: 860px; margin: 0 auto; padding: 40px 24px 80px; }
+    .wrap {
+      flex: 1;
+      min-height: 0;
+      width: 100%;
+      max-width: 860px;
+      margin: 0 auto;
+      padding: 16px 24px 12px;
+      display: flex;
+      flex-direction: column;
+    }
+    .tech-body {
+      flex: 1;
+      min-height: 0;
+      display: flex;
+      flex-direction: column;
+    }
     .lede {
       border-left: 3px solid var(--ink);
       padding: 8px 0 8px 16px;
-      margin: 0 0 32px;
+      margin: 0 0 22px;
     }
-    .tech-stance { margin: 12px 0 20px; }
+    .tech-stance { margin: 8px 0 22px; }
     .tech-stance h3 { margin: 0 0 8px; font-size: 20px; }
-    .tech-group { margin-bottom: 18px; }
-    .tech-group h4 { margin: 0 0 10px; letter-spacing: 0.12em; font-size: 14px; }
+    .tech-tomorrow { border-left-color: #6b4f2a; }
+    .tech-intent { border-left-color: #6b2a2a; }
+    .tech-intent h3 { margin: 0 0 8px; font-size: 20px; }
+    .tech-group { margin: 0 0 22px; }
+    .tech-group h4 {
+      margin: 0 0 10px;
+      letter-spacing: 0.16em;
+      font-size: 13px;
+      color: var(--muted);
+      border-bottom: 1px solid var(--rule);
+      padding-bottom: 6px;
+    }
     .tech-group.quiet summary {
       cursor: pointer; color: var(--muted); margin-bottom: 10px;
       font-size: 14px; letter-spacing: 0.08em;
@@ -46,11 +74,13 @@
     .tech-model h4 { margin: 0 0 6px; font-size: 14px; letter-spacing: 0.12em; }
     .tech-model p { margin: 0 0 6px; }
     .evidence { margin: 0; padding-left: 1.2em; color: var(--muted); font-size: 14px; font-family: "Iowan Old Style", Palatino, serif; }
+    .evidence li { margin: 0 0 4px; }
     .code { color: var(--muted); font-family: "IBM Plex Mono", "Menlo", monospace; font-size: 13px; letter-spacing: 0.04em; }
     .err { color: var(--stamp); margin-bottom: 16px; }
     .meta { font-size: 12px; color: var(--muted); }
     .meta a { color: var(--muted); }
     .meta a:hover { color: var(--stamp); }
+    .tech-head { flex-shrink: 0; }
     .tech-head h2 { margin: 0 0 6px; font-size: 24px; }
     .chanlun-chart-wrap { margin: 12px 0 16px; }
     .chanlun-chart-wrap canvas {
@@ -87,9 +117,145 @@
       cursor: pointer;
       font-size: 14px;
     }
+    .slot { min-height: 0; }
+    .slot.pending { margin: 0 0 14px; }
+    .slot:empty { display: none; }
+    .tech-tabs {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 0;
+      margin: 12px 0 0;
+      border-bottom: 1px solid var(--ink);
+      flex-shrink: 0;
+      background: var(--paper);
+    }
+    .tech-tabs button {
+      appearance: none;
+      background: none;
+      border: 0;
+      border-bottom: 2px solid transparent;
+      margin: 0 4px -1px 0;
+      padding: 8px 14px 10px;
+      font-family: inherit;
+      font-size: 14px;
+      letter-spacing: 0.16em;
+      color: var(--muted);
+      cursor: pointer;
+    }
+    .tech-tabs button[aria-selected="true"] {
+      color: var(--ink);
+      border-bottom-color: var(--ink);
+    }
+    .tech-tabs button.waiting { opacity: 0.65; }
+    .tech-pane {
+      flex: 1;
+      min-height: 0;
+      display: flex;
+      flex-direction: column;
+    }
+    .tab-panels {
+      flex: 1;
+      min-height: 0;
+      overflow: auto;
+    }
+    .tab-panel { padding: 16px 0 8px; }
+    .tab-panel.is-off { display: none; }
+    .tech-ask {
+      flex: 0 0 auto;
+      border-top: 2px solid var(--ink);
+      margin-top: 8px;
+      padding-top: 12px;
+      background: var(--paper);
+    }
+    .tech-ask h4 { margin: 0 0 6px; letter-spacing: 0.12em; font-size: 14px; }
+    .chat-log {
+      margin: 0 0 10px;
+      max-height: 18vh;
+      overflow: auto;
+    }
+    .chat-msg { margin: 0 0 12px; }
+    .chat-msg .who { font-size: 12px; color: var(--muted); margin-bottom: 4px; letter-spacing: 0.06em; }
+    .chat-msg .bubble {
+      background: var(--card);
+      border: 1px solid var(--rule);
+      padding: 10px 12px;
+    }
+    .chat-msg.user .bubble { background: #efe6d4; }
+    .md-body { font-size: 15px; line-height: 1.65; }
+    .md-body p { margin: 0 0 10px; }
+    .md-body p:last-child { margin-bottom: 0; }
+    .md-body h3, .md-body h4 {
+      margin: 14px 0 8px;
+      font-size: 16px;
+      letter-spacing: 0.04em;
+    }
+    .md-body h3:first-child, .md-body h4:first-child { margin-top: 0; }
+    .md-body ul, .md-body ol { margin: 0 0 10px; padding-left: 1.3em; color: var(--ink); }
+    .md-body li { margin: 0 0 4px; }
+    .md-body strong { font-weight: 700; }
+    .md-body code {
+      font-family: "IBM Plex Mono", Menlo, monospace;
+      font-size: 13px;
+      background: #efe6d4;
+      padding: 0 4px;
+    }
+    .md-body pre {
+      font-family: "IBM Plex Mono", Menlo, monospace;
+      font-size: 13px;
+      background: #efe6d4;
+      border: 1px solid var(--rule);
+      padding: 8px 10px;
+      overflow: auto;
+      white-space: pre-wrap;
+    }
+    .md-body pre code { background: none; padding: 0; }
+    .chat-think {
+      margin: 0 0 8px;
+      font-size: 13px;
+      color: var(--muted);
+    }
+    .chat-think summary { cursor: pointer; }
+    .chat-form .row { display: flex; flex-wrap: wrap; gap: 10px; align-items: end; margin-top: 8px; }
+    .chat-form label {
+      display: flex;
+      flex-direction: column;
+      font-size: 12px;
+      color: var(--muted);
+      letter-spacing: 0.06em;
+    }
+    .chat-form select {
+      font-family: "IBM Plex Mono", Menlo, monospace;
+      font-size: 14px;
+      padding: 6px 8px;
+      border: 1px solid var(--rule);
+      background: var(--card);
+      color: var(--ink);
+    }
+    .chat-form textarea {
+      display: block;
+      width: 100%;
+      min-height: 52px;
+      font-family: inherit;
+      font-size: 14px;
+      padding: 8px;
+      border: 1px solid var(--rule);
+      background: var(--card);
+      color: var(--ink);
+      resize: vertical;
+    }
+    .chat-form button {
+      font-family: inherit;
+      background: var(--ink);
+      color: var(--paper);
+      border: 0;
+      padding: 8px 14px;
+      cursor: pointer;
+      font-size: 14px;
+    }
+    .chat-form button:disabled { opacity: 0.45; cursor: default; }
   </style>
 </head>
-<body>
+<body data-code="{{ code }}">
   <div class="wrap">
     <p class="meta"><a href="/">← 返回持仓</a> · <a href="/journal/{{ code }}">历史快照</a></p>
 
@@ -99,352 +265,299 @@
       {% else %}
         <header class="tech-head">
           <h2>{{ name }} <span class="code">{{ kind }} {{ code }}</span></h2>
-          {% if price is not none %}
+          {% if price %}
             <p class="meta">现价 {{ "%.4f"|format(price) }}</p>
           {% endif %}
         </header>
-
-        <section class="lede tech-stance">
-          <h3>{{ report.stance }}</h3>
-          <ul class="evidence">
-            {% for e in report.stance_evidence %}
-              <li>{{ e }}</li>
-            {% endfor %}
-          </ul>
-        </section>
-
-        {% if report.trend_title %}
-        <section class="tech-group">
-          <h4>走势</h4>
-          <p><strong>{{ report.trend_title }}</strong></p>
-          <ul class="evidence">
-            {% for e in report.trend_evidence %}
-              <li>{{ e }}</li>
-            {% endfor %}
-          </ul>
-        </section>
-        {% endif %}
-
-        {% if report.timeframes %}
-        <section class="tech-group">
-          <h4>多周期</h4>
-          <p><strong>{{ report.timeframes.title }}</strong></p>
-          <ul class="evidence">
-            {% for e in report.timeframes.evidence %}<li>{{ e }}</li>{% endfor %}
-          </ul>
-        </section>
-        {% endif %}
-
-        {% if report.guides %}
-        <section class="tech-group">
-          <h4>对照</h4>
-          <p class="meta">从 easy_tdx 常见做法抽出来的四条，用这只的日 K 核对；不是选股扫描，也不是保证。</p>
-          {% for g in report.guides %}
-          <article class="tech-item">
-            <strong>{{ g.title }}</strong>
-            <ul class="evidence">
-              {% for e in g.evidence %}<li>{{ e }}</li>{% endfor %}
-            </ul>
-          </article>
-          {% endfor %}
-        </section>
-        {% endif %}
-
-        {% if report.relative %}
-        <section class="tech-group">
-          <h4>相对强弱</h4>
-          <p><strong>{{ report.relative.title }}</strong></p>
-          <ul class="evidence">
-            {% for e in report.relative.evidence %}<li>{{ e }}</li>{% endfor %}
-          </ul>
-        </section>
-        {% endif %}
-
-        {% if report.overseas %}
-        <section class="tech-group">
-          <h4>外部参照</h4>
-          <p><strong>{{ report.overseas.title }}</strong></p>
-          <ul class="evidence">
-            {% for e in report.overseas.evidence %}<li>{{ e }}</li>{% endfor %}
-          </ul>
-        </section>
-        {% endif %}
-
-        {% if plan and plan.tomorrow and plan.tomorrow.title %}
-        <section class="lede">
-          <h4>明日</h4>
-          <p><strong>{{ plan.tomorrow.title }}</strong></p>
-          <ul class="evidence">
-            {% if plan.tomorrow.open_bias %}<li>{{ plan.tomorrow.open_bias }}</li>{% endif %}
-            {% if plan.tomorrow.band %}<li>{{ plan.tomorrow.band }}</li>{% endif %}
-            {% for w in plan.tomorrow.watches %}<li>{{ w }}</li>{% endfor %}
-          </ul>
-          <p class="meta">{{ plan.tomorrow.note }}</p>
-        </section>
-        {% endif %}
-
-        {% if plan and plan.has %}
-        <section class="tech-group">
-          <h4>预案</h4>
-          <p><strong>防守位：{% for d in plan.defenses %}{{ "%.3f"|format(d.level) }}（{{ d.label }}）{% if not loop.last %} → {% endif %}{% endfor %}</strong></p>
-          <ul class="evidence">
-            {% if plan.confirm %}<li>{{ plan.confirm }}</li>{% endif %}
-            {% for p in plan.principles %}<li>{{ p }}</li>{% endfor %}
-          </ul>
-          <table class="plan-table">
-            {% for s in plan.scenarios %}
-            <tr><td>{{ s.case }}</td><td>{{ s.action }}</td></tr>
-            {% endfor %}
-          </table>
-          <p class="meta">{{ plan.note }}</p>
-          <form class="check-form" method="post" action="/check/{{ code }}">
-            <p class="meta">想动手？先对照纪律：价格填拟成交价，数量填拟买卖的股/份。</p>
+        <div class="tech-pane">
+          <nav class="tech-tabs" role="tablist">
+            <button type="button" role="tab" id="tab-plan" data-tab="plan" aria-selected="true" class="waiting">判断</button>
+            <button type="button" role="tab" id="tab-intent" data-tab="intent" aria-selected="false" class="waiting">主力意图分析</button>
+            <button type="button" role="tab" id="tab-note" data-tab="note" aria-selected="false" class="waiting">说明</button>
+            <button type="button" role="tab" id="tab-extra" data-tab="extra" aria-selected="false" class="waiting">外部</button>
+            <button type="button" role="tab" id="tab-chart" data-tab="chart" aria-selected="false" class="waiting">缠论</button>
+          </nav>
+          <div class="tab-panels">
+            <section class="tab-panel" id="panel-plan" data-panel="plan">
+              <div id="tech-core" class="slot pending"><p class="meta">在算日线和预案…</p></div>
+            </section>
+            <section class="tab-panel is-off" id="panel-intent" data-panel="intent">
+              <div id="tech-intent" class="slot pending"><p class="meta">在对照资金和价格…</p></div>
+            </section>
+            <section class="tab-panel is-off" id="panel-note" data-panel="note">
+              <div id="tech-note" class="slot pending"><p class="meta">说明还在写…</p></div>
+            </section>
+            <section class="tab-panel is-off" id="panel-extra" data-panel="extra">
+              <div id="tech-extras" class="slot pending"><p class="meta">在拉外部参照…</p></div>
+            </section>
+            <section class="tab-panel is-off" id="panel-chart" data-panel="chart">
+              <div id="tech-rest" class="slot"></div>
+            </section>
+          </div>
+        </div>
+        <section class="tech-ask" id="tech-chat">
+          <h4>问这页</h4>
+          <p class="meta">核心出来后才能问。每句都会带上这页当时已经算好的数据。刷新页面对话清空。</p>
+          <div class="chat-log" id="chat-log"></div>
+          <form class="chat-form" id="chat-form">
+            <textarea id="chat-input" rows="2" placeholder="问这页的数据，比如防线、成本、能不能加" disabled></textarea>
             <div class="row">
-              <label>方向
-                <select name="side">
-                  <option value="buy">买</option>
-                  <option value="sell">卖</option>
+              <label>模型
+                <select id="chat-model">
+                  <option value="deepseek-v4-flash">V4 Flash</option>
+                  <option value="deepseek-v4-pro">V4 Pro</option>
+                  <option value="deepseek-v4-flash-vision-exp">V4 Flash Vision（实验）</option>
                 </select>
               </label>
-              <label>价格
-                <input name="price" type="number" step="any" required value="{{ "%.4f"|format(price) if price else "" }}" />
-              </label>
-              <label>数量
-                <input name="qty" type="number" step="any" required placeholder="股/份" />
-              </label>
-              <button type="submit">对照纪律</button>
+              <button type="submit" id="chat-btn" disabled>问</button>
             </div>
           </form>
         </section>
-        {% endif %}
-
-        {% if report.model_status == "ok" and report.model_note %}
-        <section class="lede tech-model">
-          <h4>说明</h4>
-          <p>{{ report.model_note }}</p>
-          <p class="meta">由 DeepSeek 只看数据独立生成（没给它上方的规则结论）：先论证再判断；和规则结论不一致时，往往说明证据在打架。</p>
-        </section>
-        {% elif report.model_status == "error" %}
-        <p class="meta">说明：模型这次没写出来{% if report.model_note %}（{{ report.model_note }}）{% endif %}。</p>
-        {% elif report.model_status == "skipped" %}
-        <p class="meta">说明：未接 DeepSeek（设置环境变量 DEEPSEEK_API_KEY 后，点开会多一段白话）。</p>
-        {% endif %}
-
-        {% if report.capital %}
-        <section class="tech-group">
-          <h4>资金</h4>
-          <p><strong>{{ report.capital.title }}</strong></p>
-          <ul class="evidence">{% for e in report.capital.evidence %}<li>{{ e }}</li>{% endfor %}</ul>
-        </section>
-        {% endif %}
-        {% if report.boards %}
-        <section class="tech-group">
-          <h4>板块</h4>
-          {% for b in report.boards %}
-          <article class="tech-item">
-            <strong>{{ b.title }}</strong>
-            <ul class="evidence">{% for e in b.evidence %}<li>{{ e }}</li>{% endfor %}</ul>
-          </article>
-          {% endfor %}
-        </section>
-        {% endif %}
-
-        {% if report.intraday %}
-        <section class="tech-group">
-          <h4>分时 / 竞价</h4>
-          <p><strong>{{ report.intraday.title }}</strong></p>
-          <ul class="evidence">
-            {% for e in report.intraday.evidence %}<li>{{ e }}</li>{% endfor %}
-          </ul>
-        </section>
-        {% endif %}
-        {% if report.xdxr %}
-        <section class="tech-group">
-          <h4>除权除息</h4>
-          <p><strong>{{ report.xdxr.title }}</strong></p>
-          <ul class="evidence">
-            {% for e in report.xdxr.evidence %}<li>{{ e }}</li>{% endfor %}
-          </ul>
-        </section>
-        {% endif %}
-        {% if report.etf %}
-        <section class="tech-group">
-          <h4>ETF</h4>
-          <p><strong>{{ report.etf.title }}</strong></p>
-          <ul class="evidence">
-            {% for e in report.etf.evidence %}<li>{{ e }}</li>{% endfor %}
-          </ul>
-        </section>
-        {% endif %}
-
-        {% if report.unusual %}
-        <section class="tech-group">
-          <h4>异动</h4>
-          <p><strong>{{ report.unusual.title }}</strong></p>
-          <p class="meta">来自 easy_tdx 全市场异动名单，只留下这只代码。没有对上就写没出现。</p>
-          {% if report.unusual.evidence %}
-          <ul class="evidence">
-            {% for e in report.unusual.evidence %}<li>{{ e }}</li>{% endfor %}
-          </ul>
-          {% endif %}
-        </section>
-        {% endif %}
-
-        {% if report.chanlun %}
-        <section class="tech-group">
-          <h4>缠论</h4>
-          <p><strong>{{ report.chanlun.title }}</strong></p>
-          <p class="meta">{{ report.chanlun.note }}</p>
-          {% if report.chanlun.klines %}
-          <div class="chanlun-chart-wrap">
-            <canvas id="chanlun-chart" width="800" height="320"></canvas>
-            <p class="chanlun-legend">K 线 · 折线是笔 · 色带是中枢上下沿 · 三角是买卖点（红买 / 绿卖）。点三角看说明。</p>
-            <p class="chanlun-tip" id="chanlun-tip"></p>
-          </div>
-          <script type="application/json" id="chanlun-data">{{ {
-            "klines": report.chanlun.klines,
-            "bis": report.chanlun.bis,
-            "zss": report.chanlun.zss,
-            "mmds": report.chanlun.mmds
-          } | tojson }}</script>
-          {% elif report.chanlun.counts %}
-          <ul class="evidence">
-            {% for k, v in report.chanlun.counts.items() %}
-              <li>{{ k }} {{ v }}</li>
-            {% endfor %}
-          </ul>
-          {% endif %}
-
-          <details class="tech-group quiet">
-            <summary>缠论明细（点开看数字）</summary>
-          {% if report.chanlun.counts %}
-          <ul class="evidence">
-            {% for k, v in report.chanlun.counts.items() %}
-              <li>{{ k }} {{ v }}</li>
-            {% endfor %}
-          </ul>
-          {% endif %}
-
-          <details class="tech-group quiet">
-            <summary>分型（{{ report.chanlun.fractals|length }}）</summary>
-            {% if report.chanlun.fractals %}
-            <ul class="evidence">
-              {% for row in report.chanlun.fractals %}
-                <li>[{{ row.index }}] {% if row.type == 'ding' %}顶{% elif row.type == 'di' %}底{% else %}{{ row.type }}{% endif %} {{ row.date }} 值 {{ row.val }}{% if row.done is defined and not row.done %} …{% else %} ✓{% endif %}</li>
-              {% endfor %}
-            </ul>
-            {% else %}
-            <p class="meta">没有分型记录。</p>
-            {% endif %}
-          </details>
-
-          <details class="tech-group quiet">
-            <summary>笔（{{ report.chanlun.bis|length }}）</summary>
-            {% if report.chanlun.bis %}
-            <ul class="evidence">
-              {% for row in report.chanlun.bis %}
-                <li>[{{ row.index }}] {% if row.direction == 'up' %}向上{% elif row.direction == 'down' %}向下{% else %}{{ row.direction }}{% endif %} {{ row.start_date }} → {{ row.end_date }} 高 {{ row.high }} 低 {{ row.low }}{% if row.done %} ✓{% else %} …{% endif %}</li>
-              {% endfor %}
-            </ul>
-            {% else %}
-            <p class="meta">没有笔记录。</p>
-            {% endif %}
-          </details>
-
-          <details class="tech-group quiet">
-            <summary>中枢（{{ report.chanlun.zss|length }}）</summary>
-            {% if report.chanlun.zss %}
-            <ul class="evidence">
-              {% for row in report.chanlun.zss %}
-                <li>[{{ row.index }}] 上沿 {{ row.zg }} 下沿 {{ row.zd }} 最高 {{ row.gg }} 最低 {{ row.dd }} 笔数 {{ row.line_count }} {{ row.start_date }} → {{ row.end_date }}{% if row.done %} ✓{% else %} …{% endif %}</li>
-              {% endfor %}
-            </ul>
-            {% else %}
-            <p class="meta">没有中枢记录。</p>
-            {% endif %}
-          </details>
-
-          <details class="tech-group quiet">
-            <summary>线段（{{ report.chanlun.xds|length }}）</summary>
-            {% if report.chanlun.xds %}
-            <ul class="evidence">
-              {% for row in report.chanlun.xds %}
-                <li>[{{ row.index }}] {% if row.direction == 'up' %}向上{% elif row.direction == 'down' %}向下{% else %}{{ row.direction }}{% endif %} {{ row.start_date }} → {{ row.end_date }} 高 {{ row.high }} 低 {{ row.low }}</li>
-              {% endfor %}
-            </ul>
-            {% else %}
-            <p class="meta">没有线段记录。</p>
-            {% endif %}
-          </details>
-
-          <details class="tech-group quiet">
-            <summary>买卖点（{{ report.chanlun.mmds|length }}）</summary>
-            {% if report.chanlun.mmds %}
-            <ul class="evidence">
-              {% for row in report.chanlun.mmds %}
-                <li>{{ row.type }} {{ row.date }} {{ row.msg }}</li>
-              {% endfor %}
-            </ul>
-            {% else %}
-            <p class="meta">没有买卖点记录。</p>
-            {% endif %}
-          </details>
-
-          <details class="tech-group quiet">
-            <summary>背驰（{{ report.chanlun.bcs|length }}）</summary>
-            {% if report.chanlun.bcs %}
-            <ul class="evidence">
-              {% for row in report.chanlun.bcs %}
-                <li>{{ row.type }} {{ row.curr_date }} {{ row.msg }}</li>
-              {% endfor %}
-            </ul>
-            {% else %}
-            <p class="meta">没有背驰记录。</p>
-            {% endif %}
-          </details>
-          </details>
-        </section>
-        {% endif %}
-
-        {% if report.signals %}
-        <section class="tech-group">
-          <h4>有信号</h4>
-          {% for s in report.signals %}
-          <article class="tech-item signal">
-            <strong>{{ s.name }}</strong>
-            {% if s.about %}<p class="tech-about">{{ s.about }}</p>{% endif %}
-            <p>{{ s.reading }}</p>
-            <ul class="evidence">
-              {% for e in s.evidence %}<li>{{ e }}</li>{% endfor %}
-            </ul>
-          </article>
-          {% endfor %}
-        </section>
-        {% endif %}
-
-        {% if report.quiet %}
-        <details class="tech-group quiet">
-          <summary>其余指标（{{ report.quiet|length }}）</summary>
-          {% for s in report.quiet %}
-          <article class="tech-item">
-            <strong>{{ s.name }}</strong>
-            {% if s.about %}<p class="tech-about">{{ s.about }}</p>{% endif %}
-            <p>{{ s.reading }}</p>
-            <ul class="evidence">
-              {% for e in s.evidence %}<li>{{ e }}</li>{% endfor %}
-            </ul>
-          </article>
-          {% endfor %}
-        </details>
-        {% endif %}
       {% endif %}
     </section>
   </div>
   <script>
     (function () {
+      var code = document.body.getAttribute("data-code") || "";
+      if (!code || document.querySelector(".err")) return;
+      var core = document.getElementById("tech-core");
+      var extras = document.getElementById("tech-extras");
+      var intent = document.getElementById("tech-intent");
+      var note = document.getElementById("tech-note");
+      var rest = document.getElementById("tech-rest");
+      var chatInput = document.getElementById("chat-input");
+      var chatBtn = document.getElementById("chat-btn");
+      var chatForm = document.getElementById("chat-form");
+      var chatLog = document.getElementById("chat-log");
+      var chatModel = document.getElementById("chat-model");
+      var history = [];
+      var chanlunReady = false;
+      function readyTab(name) {
+        var btn = document.querySelector('.tech-tabs [data-tab="' + name + '"]');
+        if (btn) btn.classList.remove("waiting");
+      }
+      function showChanlun() {
+        if (!chanlunReady || !window.initChanlunChart) return;
+        requestAnimationFrame(function () { window.initChanlunChart(); });
+      }
+      function selectTab(name) {
+        document.querySelectorAll(".tech-tabs [data-tab]").forEach(function (btn) {
+          btn.setAttribute("aria-selected", btn.getAttribute("data-tab") === name ? "true" : "false");
+        });
+        document.querySelectorAll(".tab-panel").forEach(function (panel) {
+          panel.classList.toggle("is-off", panel.getAttribute("data-panel") !== name);
+        });
+        if (name === "chart") showChanlun();
+      }
+      document.querySelectorAll(".tech-tabs [data-tab]").forEach(function (btn) {
+        btn.addEventListener("click", function () { selectTab(btn.getAttribute("data-tab")); });
+      });
+      try {
+        var saved = localStorage.getItem("holdings-chat-model");
+        if (chatModel && (
+          saved === "deepseek-v4-flash"
+          || saved === "deepseek-v4-pro"
+          || saved === "deepseek-v4-flash-vision-exp"
+        )) {
+          chatModel.value = saved;
+        }
+      } catch (e) {}
+      if (chatModel) {
+        chatModel.addEventListener("change", function () {
+          try { localStorage.setItem("holdings-chat-model", chatModel.value); } catch (err) {}
+        });
+      }
+      function fill(el, html) {
+        if (!el) return;
+        el.classList.remove("pending");
+        var trimmed = (html || "").trim();
+        el.innerHTML = trimmed;
+        if (!trimmed) el.innerHTML = "";
+      }
+      function escapeHtml(s) {
+        return String(s)
+          .replace(/&/g, "&amp;")
+          .replace(/</g, "&lt;")
+          .replace(/>/g, "&gt;")
+          .replace(/"/g, "&quot;");
+      }
+      function renderMarkdown(src) {
+        var text = String(src || "").replace(/\r\n/g, "\n").trim();
+        if (!text) return "";
+        var fences = [];
+        text = text.replace(/```[\w]*\n?([\s\S]*?)```/g, function (_, code) {
+          fences.push("<pre><code>" + escapeHtml(code.replace(/\n$/, "")) + "</code></pre>");
+          return "\n\n%%FENCE" + (fences.length - 1) + "%%\n\n";
+        });
+        var blocks = text.split(/\n{2,}/);
+        return blocks.map(function (block) {
+          var raw = block.trim();
+          if (!raw) return "";
+          if (/^%%FENCE\d+%%$/.test(raw)) {
+            return fences[Number(raw.replace(/\D/g, ""))] || "";
+          }
+          if (/^#{1,3} /.test(raw)) {
+            var depth = raw.match(/^#+/)[0].length;
+            var title = escapeHtml(raw.replace(/^#{1,3} /, ""));
+            return depth >= 3 ? "<h4>" + title + "</h4>" : "<h3>" + title + "</h3>";
+          }
+          var lines = escapeHtml(raw).split("\n");
+          var html = "";
+          var paras = [];
+          var items = [];
+          function flushPara() {
+            if (!paras.length) return;
+            html += "<p>" + inlineMd(paras.join("<br>")) + "</p>";
+            paras = [];
+          }
+          function flushList() {
+            if (!items.length) return;
+            html += "<ul>" + items.join("") + "</ul>";
+            items = [];
+          }
+          lines.forEach(function (ln) {
+            var m = ln.match(/^(?:\d+[\.、]|[-*•])\s+(.*)$/) || ln.match(/^\d+、(.*)$/);
+            if (m) {
+              flushPara();
+              items.push("<li>" + inlineMd(m[1]) + "</li>");
+            } else {
+              flushList();
+              paras.push(ln);
+            }
+          });
+          flushPara();
+          flushList();
+          return html;
+        }).join("");
+      }
+      function inlineMd(s) {
+        return s
+          .replace(/\*\*(.+?)\*\*/g, "<strong>$1</strong>")
+          .replace(/`([^`]+)`/g, "<code>$1</code>");
+      }
+      function hydrateMarkdown(root) {
+        if (!root) return;
+        root.querySelectorAll(".md-json").forEach(function (node) {
+          var raw = "";
+          try { raw = JSON.parse(node.textContent || "\"\""); } catch (err) { raw = ""; }
+          var out = node.nextElementSibling;
+          if (out && out.classList.contains("md-out")) out.innerHTML = renderMarkdown(raw);
+        });
+      }
+      function append(role, text, reasoning) {
+        if (!chatLog) return;
+        var wrap = document.createElement("div");
+        wrap.className = "chat-msg " + role;
+        var who = document.createElement("div");
+        who.className = "who";
+        who.textContent = role === "user" ? "我" : "模型";
+        var bubble = document.createElement("div");
+        bubble.className = "bubble";
+        if (role === "assistant" && reasoning) {
+          var think = document.createElement("details");
+          think.className = "chat-think";
+          think.innerHTML = "<summary>思考过程</summary><div class=\"md-body\">" + renderMarkdown(reasoning) + "</div>";
+          bubble.appendChild(think);
+        }
+        var body = document.createElement("div");
+        body.className = "md-body";
+        if (role === "assistant") body.innerHTML = renderMarkdown(text);
+        else body.textContent = text;
+        bubble.appendChild(body);
+        wrap.appendChild(who);
+        wrap.appendChild(bubble);
+        chatLog.appendChild(wrap);
+        wrap.scrollIntoView({ block: "nearest" });
+      }
+      fetch("/tech/" + encodeURIComponent(code) + "/core")
+        .then(function (r) { return r.text(); })
+        .then(function (html) {
+          var box = document.createElement("div");
+          box.innerHTML = html;
+          var lead = box.querySelector('[data-part="lead"]');
+          var more = box.querySelector('[data-part="rest"]');
+          if (lead || more) {
+            fill(core, lead ? lead.innerHTML : "");
+            fill(rest, more ? more.innerHTML : "");
+          } else {
+            fill(core, html);
+          }
+          chanlunReady = true;
+          readyTab("plan");
+          readyTab("chart");
+          if (chatInput) chatInput.disabled = false;
+          if (chatBtn) chatBtn.disabled = false;
+          if (!document.getElementById("panel-chart").classList.contains("is-off")) showChanlun();
+          return fetch("/tech/" + encodeURIComponent(code) + "/extras");
+        })
+        .then(function (r) { return r.text(); })
+        .then(function (html) {
+          var box = document.createElement("div");
+          box.innerHTML = html;
+          var extraPart = box.querySelector('[data-part="extra"]');
+          var intentPart = box.querySelector('[data-part="intent"]');
+          if (extraPart || intentPart) {
+            fill(extras, extraPart ? extraPart.innerHTML : "");
+            fill(intent, intentPart ? intentPart.innerHTML : "");
+          } else {
+            fill(extras, html);
+          }
+          var extraTm = extras.querySelector(".tech-tomorrow");
+          var leadTm = core && core.querySelector(".tech-tomorrow");
+          if (extraTm && leadTm) leadTm.replaceWith(extraTm);
+          else if (extraTm) extraTm.remove();
+          readyTab("extra");
+          readyTab("intent");
+          return fetch("/tech/" + encodeURIComponent(code) + "/note");
+        })
+        .then(function (r) { return r.text(); })
+        .then(function (html) {
+          fill(note, html);
+          hydrateMarkdown(note);
+          readyTab("note");
+        })
+        .catch(function (e) {
+          if (core) core.innerHTML = "<p class=\"err\">这块没拉下来：" + e + "</p>";
+        });
+      if (chatForm) {
+        chatForm.addEventListener("submit", function (ev) {
+          ev.preventDefault();
+          var msg = (chatInput && chatInput.value || "").trim();
+          if (!msg || (chatInput && chatInput.disabled)) return;
+          chatInput.value = "";
+          var prev = history.slice();
+          history.push({ role: "user", content: msg });
+          append("user", msg);
+          if (chatBtn) chatBtn.disabled = true;
+          fetch("/tech/" + encodeURIComponent(code) + "/chat", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+              message: msg,
+              history: prev,
+              model: chatModel ? chatModel.value : "deepseek-v4-flash"
+            })
+          })
+            .then(function (r) { return r.json().then(function (j) { return { ok: r.ok, j: j }; }); })
+            .then(function (x) {
+              var text = (x.j && (x.j.text || x.j.error)) || "没回上来";
+              var reasoning = (x.j && x.j.reasoning) || "";
+              history.push({ role: "assistant", content: text });
+              append("assistant", text, reasoning);
+            })
+            .catch(function (e) { append("assistant", "没问成：" + e); })
+            .finally(function () { if (chatBtn) chatBtn.disabled = false; });
+        });
+      }
+    })();
+    window.initChanlunChart = function () {
       var node = document.getElementById("chanlun-data");
       var canvas = document.getElementById("chanlun-chart");
       if (!node || !canvas) return;
+      if (window._chanlunDraw) {
+        window._chanlunDraw();
+        return;
+      }
       var data;
       try { data = JSON.parse(node.textContent); } catch (e) { return; }
       var klines = data.klines || [];
@@ -586,6 +699,7 @@
         }
       }
 
+      window._chanlunDraw = draw;
       draw();
       window.addEventListener("resize", draw);
       canvas.addEventListener("click", function (ev) {
@@ -599,7 +713,7 @@
         });
         if (tip) tip.textContent = found ? found.text : "";
       });
-    })();
+    };
   </script>
 </body>
 </html>

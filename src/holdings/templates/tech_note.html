@@ -1,0 +1,12 @@
+{% if report and report.model_status == "ok" and report.model_note %}
+<section class="lede tech-model">
+  <h4>说明</h4>
+  <script type="application/json" class="md-json">{{ report.model_note | tojson }}</script>
+  <div class="md-out md-body"></div>
+  <p class="meta">由 DeepSeek 只看数据独立生成（没给它上方的规则结论）：先论证再判断；和规则结论不一致时，往往说明证据在打架。</p>
+</section>
+{% elif report and report.model_status == "error" %}
+<p class="meta">说明：模型这次没写出来{% if report.model_note %}（{{ report.model_note }}）{% endif %}。</p>
+{% elif report and report.model_status == "skipped" %}
+<p class="meta">说明：未接 DeepSeek（设置环境变量 DEEPSEEK_API_KEY 后，点开会多一段白话）。</p>
+{% endif %}

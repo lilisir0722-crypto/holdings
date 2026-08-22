@@ -1,0 +1,70 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>{{ holding.name }} · 买入记录</title>
+  <style>
+    :root {
+      --paper: #f3ead8;
+      --ink: #1b1712;
+      --muted: #6b6256;
+      --rule: #c9bba3;
+      --stamp: #9b1c1c;
+      --card: #faf6ee;
+    }
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      background: var(--paper);
+      color: var(--ink);
+      font-family: "Songti SC", "Noto Serif SC", "Source Han Serif SC", Palatino, serif;
+      line-height: 1.55;
+    }
+    .wrap { max-width: 860px; margin: 0 auto; padding: 40px 24px 80px; }
+    .meta { font-size: 12px; color: var(--muted); }
+    .meta a { color: var(--muted); }
+    .meta a:hover { color: var(--stamp); }
+    h2 { margin: 0 0 4px; font-size: 24px; }
+    .nums { display: flex; gap: 18px; flex-wrap: wrap; margin: 10px 0 18px; font-family: "IBM Plex Mono", Menlo, monospace; font-size: 13px; }
+    .item { border-top: 1px solid var(--rule); padding: 12px 0; display: flex; justify-content: space-between; align-items: baseline; gap: 12px; }
+    .item .px { font-family: "IBM Plex Mono", Menlo, monospace; font-size: 14px; }
+    form.inline { display: inline; }
+    button.ghost {
+      font-family: inherit;
+      background: transparent;
+      color: var(--muted);
+      border: 1px solid var(--rule);
+      padding: 6px 10px;
+      cursor: pointer;
+      font-size: 13px;
+    }
+    .empty { color: var(--muted); margin-top: 24px; }
+  </style>
+</head>
+<body>
+  <div class="wrap">
+    <p class="meta"><a href="/">← 返回持仓</a></p>
+    <h2>{{ holding.name }} 的买入记录</h2>
+    <p class="meta">{{ holding.kind }} {{ holding.code }}{% if holding.place %} · {{ holding.place }}{% endif %} · 追加后按加权平均重算成本。记错了可以删。</p>
+    <div class="nums">
+      <span>数量 {{ holding.quantity }}</span>
+      <span>成本 {{ "%.4f"|format(holding.cost) }}</span>
+    </div>
+    {% if lots %}
+      {% for rec in lots %}
+      <div class="item">
+        <div>
+          <div class="px">{{ rec.date }} · {{ rec.kind }} · {{ rec.quantity }} × {{ "%.4f"|format(rec.price) }}</div>
+        </div>
+        <form class="inline" method="post" action="/delete-lot/{{ holding.id }}/{{ rec.id }}">
+          <button class="ghost" type="submit">删这条</button>
+        </form>
+      </div>
+      {% endfor %}
+    {% else %}
+      <p class="empty">还没有流水。首页那只下面填数量和买入价，点追加。</p>
+    {% endif %}
+  </div>
+</body>
+</html>

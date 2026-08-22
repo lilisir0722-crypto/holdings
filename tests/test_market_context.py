@@ -60,9 +60,20 @@ def test_summarize_capital_negative_main_net():
     assert "负" in block.summary_line
 
 
-def test_fetch_market_context_both_ok():
+def test_summarize_capital_blank_date_still_uses_main_net():
+    df = pd.DataFrame(
+        [{"date": "", "main_net": -4.17e7, "small_net": 4.17e7}]
+    )
+    block = summarize_capital(df)
+    assert block.ok
+    assert "主力" in block.title
+    assert any("4171" in e or "万" in e for e in block.evidence)
+    assert "没有资金流向" not in block.title
+
+
+def test_fetch_market_context_pulls_tdx_capital():
     client = MagicMock()
-    cap_df = pd.DataFrame([{"date": "2026-08-15", "main_net": 1e7}])
+    cap_df = pd.DataFrame([{"date": "", "main_net": -4.17e7, "small_net": 4.17e7}])
     belong_df = pd.DataFrame([{"name": "行业", "code": "HY001"}])
     client.get_capital_flow.return_value = cap_df
     client.get_belong_board.return_value = belong_df
@@ -78,23 +89,9 @@ def test_fetch_market_context_both_ok():
     client.get_belong_board.assert_called_once()
 
 
-def test_fetch_market_context_capital_fails_only():
-    client = MagicMock()
-    belong_df = pd.DataFrame([{"name": "行业"}])
-    client.get_capital_flow.side_effect = RuntimeError("cap fail")
-    client.get_belong_board.return_value = belong_df
-    client.get_unusual.return_value = pd.DataFrame()
-
-    out = fetch_market_context(client, "600000")
-
-    assert out["error"] == "cap fail"
-    assert out["capital_df"] is None
-    assert out["belong_df"] is belong_df
-
-
 def test_fetch_market_context_belong_fails_only():
     client = MagicMock()
-    cap_df = pd.DataFrame([{"date": "2026-08-15", "main_net": 1e7}])
+    cap_df = pd.DataFrame([{"date": "", "main_net": -4.17e7}])
     client.get_capital_flow.return_value = cap_df
     client.get_belong_board.side_effect = RuntimeError("belong fail")
     client.get_unusual.return_value = pd.DataFrame()
@@ -104,6 +101,7 @@ def test_fetch_market_context_belong_fails_only():
     assert out["error"] == "belong: belong fail"
     assert out["capital_df"] is cap_df
     assert out["belong_df"] is None
+    client.get_capital_flow.assert_called_once()
 
 
 def test_pick_boards_prefers_few():
@@ -282,7 +280,6 @@ def test_board_ranks_cached_for_second_fetch():
     market.clear_board_rank_cache()
     client = MagicMock()
     rank_df = pd.DataFrame([{"code": "880001", "name": "半导体", "change_pct": 1.2}])
-    client.get_capital_flow.return_value = pd.DataFrame([{"date": "2026-08-15", "main_net": 1e7}])
     client.get_belong_board.return_value = pd.DataFrame([{"name": "行业", "code": "HY001"}])
     client.get_unusual.return_value = pd.DataFrame()
     client.get_board_summary.return_value = {}

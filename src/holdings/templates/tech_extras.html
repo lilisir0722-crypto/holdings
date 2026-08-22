@@ -1,0 +1,118 @@
+{% if error %}
+  <p class="err">{{ error }}</p>
+{% elif report %}
+<div data-part="extra">
+  {% if report.overseas %}
+  <section class="tech-group">
+    <h4>外部参照</h4>
+    <p><strong>{{ report.overseas.title }}</strong></p>
+    <ul class="evidence">
+      {% for e in report.overseas.evidence %}<li>{{ e }}</li>{% endfor %}
+    </ul>
+  </section>
+  {% endif %}
+
+  {% if plan and plan.tomorrow and plan.tomorrow.title %}
+  <section class="lede tech-tomorrow">
+    <h4>明日</h4>
+    <p><strong>{{ plan.tomorrow.title }}</strong></p>
+    <ul class="evidence">
+      {% if plan.tomorrow.open_bias %}<li>{{ plan.tomorrow.open_bias }}</li>{% endif %}
+      {% if plan.tomorrow.band %}<li>{{ plan.tomorrow.band }}</li>{% endif %}
+      {% for w in plan.tomorrow.watches %}<li>{{ w }}</li>{% endfor %}
+    </ul>
+    <p class="meta">{{ plan.tomorrow.note }}</p>
+  </section>
+  {% endif %}
+
+  {% if report.timeframes %}
+  <section class="tech-group">
+    <h4>多周期</h4>
+    <p><strong>{{ report.timeframes.title }}</strong></p>
+    <ul class="evidence">
+      {% for e in report.timeframes.evidence %}<li>{{ e }}</li>{% endfor %}
+    </ul>
+  </section>
+  {% endif %}
+
+  {% if report.relative %}
+  <section class="tech-group">
+    <h4>相对强弱</h4>
+    <p><strong>{{ report.relative.title }}</strong></p>
+    <ul class="evidence">
+      {% for e in report.relative.evidence %}<li>{{ e }}</li>{% endfor %}
+    </ul>
+  </section>
+  {% endif %}
+
+  {% if report.boards %}
+  <section class="tech-group">
+    <h4>板块</h4>
+    {% for b in report.boards %}
+    <article class="tech-item">
+      <strong>{{ b.title }}</strong>
+      <ul class="evidence">{% for e in b.evidence %}<li>{{ e }}</li>{% endfor %}</ul>
+    </article>
+    {% endfor %}
+  </section>
+  {% endif %}
+
+  {% if report.intraday %}
+  <section class="tech-group">
+    <h4>分时 / 竞价</h4>
+    <p><strong>{{ report.intraday.title }}</strong></p>
+    <ul class="evidence">
+      {% for e in report.intraday.evidence %}<li>{{ e }}</li>{% endfor %}
+    </ul>
+  </section>
+  {% endif %}
+  {% if report.xdxr %}
+  <section class="tech-group">
+    <h4>除权除息</h4>
+    <p><strong>{{ report.xdxr.title }}</strong></p>
+    <ul class="evidence">
+      {% for e in report.xdxr.evidence %}<li>{{ e }}</li>{% endfor %}
+    </ul>
+  </section>
+  {% endif %}
+  {% if report.etf %}
+  <section class="tech-group">
+    <h4>ETF</h4>
+    <p><strong>{{ report.etf.title }}</strong></p>
+    <ul class="evidence">
+      {% for e in report.etf.evidence %}<li>{{ e }}</li>{% endfor %}
+    </ul>
+  </section>
+  {% endif %}
+
+  {% if report.unusual %}
+  <section class="tech-group">
+    <h4>异动</h4>
+    <p><strong>{{ report.unusual.title }}</strong></p>
+    <p class="meta">来自 easy_tdx 全市场异动名单，只留下这只代码。没有对上就写没出现。</p>
+    {% if report.unusual.evidence %}
+    <ul class="evidence">
+      {% for e in report.unusual.evidence %}<li>{{ e }}</li>{% endfor %}
+    </ul>
+    {% endif %}
+  </section>
+  {% endif %}
+</div>
+<div data-part="intent">
+  {% if report.intent %}
+  <section class="lede tech-intent">
+    <h3>{{ report.intent.title }}</h3>
+    <ul class="evidence">
+      {% for e in report.intent.evidence %}<li>{{ e }}</li>{% endfor %}
+    </ul>
+  </section>
+  {% endif %}
+  {% if report.capital %}
+  <section class="tech-group">
+    <h4>资金</h4>
+    <p><strong>{{ report.capital.title }}</strong></p>
+    <ul class="evidence">{% for e in report.capital.evidence %}<li>{{ e }}</li>{% endfor %}</ul>
+  </section>
+  {% endif %}
+</div>
+{% endif %}
